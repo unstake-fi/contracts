@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{
     instantiate2_address, to_json_binary, Addr, Binary, CodeInfoResponse, Coin, CosmosMsg, Deps,
-    DepsMut, Env, StdResult, WasmMsg,
+    Env, StdResult, WasmMsg,
 };
 
 use crate::ContractError;

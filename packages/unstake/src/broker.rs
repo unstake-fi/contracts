@@ -5,9 +5,7 @@ use std::{
 };
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{
-    Addr, CosmosMsg, Decimal, Deps, DepsMut, QuerierWrapper, StdResult, Storage, Uint128,
-};
+use cosmwasm_std::{Addr, Decimal, Deps, DepsMut, QuerierWrapper, StdResult, Storage, Uint128};
 use cw_storage_plus::Item;
 
 use crate::ContractError;
@@ -91,10 +89,10 @@ impl Broker {
 
     pub fn close_offer(
         &self,
-        deps: DepsMut,
-        offer: &Offer,
-        debt_tokens: Uint128,
-        returned_tokens: Uint128,
+        _deps: DepsMut,
+        _offer: &Offer,
+        _debt_tokens: Uint128,
+        _returned_tokens: Uint128,
     ) -> StdResult<()> {
         todo!()
     }
@@ -106,13 +104,13 @@ impl Broker {
             .div(Uint128::from(YEAR_SECONDS))
     }
 
-    pub fn fetch_current_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {
+    pub fn fetch_current_rate(&self, _query: QuerierWrapper) -> StdResult<Decimal> {
         todo!()
     }
-    pub fn fetch_max_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {
+    pub fn fetch_max_rate(&self, _query: QuerierWrapper) -> StdResult<Decimal> {
         todo!()
     }
-    pub fn fetch_redemption_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {
+    pub fn fetch_redemption_rate(&self, _query: QuerierWrapper) -> StdResult<Decimal> {
         todo!()
     }
 }

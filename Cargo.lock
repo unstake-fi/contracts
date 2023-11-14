@@ -898,6 +898,7 @@ dependencies = [
  "cw-utils",
  "cw2",
  "kujira",
+ "kujira-ghost",
  "schemars",
  "serde",
  "thiserror",

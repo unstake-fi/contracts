@@ -1,3 +1,4 @@
+pub mod adapter;
 pub mod broker;
 pub mod controller;
 pub mod delegate;

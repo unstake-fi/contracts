@@ -2,7 +2,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Deps, DepsMut, StdResult};
 use cw_storage_plus::Item;
 use kujira::Denom;
-use unstake::controller::InstantiateMsg;
+use unstake::{adapter::Adapter, controller::InstantiateMsg};
 
 static CONFIG: Item<Config> = Item::new("config");
 
@@ -13,6 +13,7 @@ pub struct Config {
     pub vault_address: Addr,
     pub offer_denom: Denom,
     pub ask_denom: Denom,
+    pub adapter: Adapter,
 }
 
 impl Config {
@@ -37,6 +38,7 @@ impl From<InstantiateMsg> for Config {
             vault_address: value.vault_address,
             offer_denom: value.offer_denom,
             ask_denom: value.ask_denom,
+            adapter: value.adapter,
         }
     }
 }

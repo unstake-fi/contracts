@@ -1,4 +1,4 @@
-use crate::broker::Offer;
+use crate::{adapter::Adapter, broker::Offer};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 use kujira::Denom;
@@ -13,6 +13,9 @@ pub struct InstantiateMsg {
 
     /// The offer denom of the Broker - ie the underlying bonded token
     pub offer_denom: Denom,
+
+    /// The adapter for the unbonding process
+    pub adapter: Adapter,
 }
 
 #[cw_serde]

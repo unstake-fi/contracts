@@ -1,13 +1,13 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure_eq, to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response,
-    WasmMsg,
+    ensure_eq, to_json_binary, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    Response, StdResult, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
-use kujira::{amount, Denom};
+use kujira::amount;
 use unstake::controller::{ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
 use unstake::helpers::{predict_address, Controller};
 use unstake::{broker::Broker, ContractError};
@@ -51,7 +51,7 @@ pub fn execute(
             };
             broker.accept_offer(deps, &offer)?;
             let send_msg = config.offer_denom.send(&info.sender, &offer.amount);
-            let borrow_message = vault_borrow_msg(&config.vault_address, offer.amount)?;
+            let borrow_msg = vault_borrow_msg(&config.vault_address, offer.amount)?;
             let callback_msg = Controller(env.contract.address)
                 .call(ExecuteMsg::UnstakeCallback { offer }, vec![])?;
 
@@ -66,12 +66,17 @@ pub fn execute(
                 env.contract.address,
                 ContractError::Unauthorized {}
             );
-            let funds = deps.querier.query_all_balances(env.contract.address)?;
+            let funds = deps
+                .querier
+                .query_all_balances(env.contract.address.clone())?;
 
             let label: String = format!(
                 "Unstake.fi delegate {}/{}",
                 env.block.height,
-                env.transaction.map(|x| x.index).unwrap_or_default()
+                env.transaction
+                    .as_ref()
+                    .map(|x| x.index)
+                    .unwrap_or_default()
             );
 
             let (address, salt) =
@@ -80,6 +85,7 @@ pub fn execute(
             let msg = unstake::delegate::InstantiateMsg {
                 controller: env.contract.address.clone(),
                 offer: offer.clone(),
+                adapter: config.adapter,
             };
 
             let instantiate: WasmMsg = WasmMsg::Instantiate2 {
@@ -93,11 +99,11 @@ pub fn execute(
 
             DELEGATES.save(deps.storage, address, &())?;
 
-            Ok(Response::default())
+            Ok(Response::default().add_message(instantiate))
         }
         ExecuteMsg::Complete { offer } => {
             DELEGATES
-                .load(deps.storage, info.sender)
+                .load(deps.storage, info.sender.clone())
                 .map_err(|_| ContractError::Unauthorized {})?;
             DELEGATES.remove(deps.storage, info.sender);
 
@@ -125,7 +131,6 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::Offer { amount } => {
-            let denom = Denom::from("TODO");
             let broker = Broker::load(deps.storage)?;
             let offer = broker.offer(deps, amount)?;
             Ok(to_json_binary(&OfferResponse::from(offer))?)
@@ -136,10 +141,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 pub fn vault_borrow_msg(addr: &Addr, amount: Uint128) -> StdResult<CosmosMsg> {
     Ok(CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: addr.to_string(),
-        msg: to_binary(&VaultExecuteMsg::Borrow(BorrowMsg {
-            amount,
-            callback: None,
-        }))?,
+        msg: to_json_binary(&kujira_ghost::receipt_vault::ExecuteMsg::Borrow(
+            kujira_ghost::receipt_vault::BorrowMsg {
+                amount,
+                callback: None,
+            },
+        ))?,
         funds: vec![],
     }))
 }
@@ -147,7 +154,9 @@ pub fn vault_borrow_msg(addr: &Addr, amount: Uint128) -> StdResult<CosmosMsg> {
 pub fn vault_repay_msg(addr: &Addr, coins: Vec<Coin>) -> StdResult<CosmosMsg> {
     Ok(CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: addr.to_string(),
-        msg: to_binary(&VaultExecuteMsg::Repay(RepayMsg { callback: None }))?,
+        msg: to_json_binary(&kujira_ghost::receipt_vault::ExecuteMsg::Repay(
+            kujira_ghost::receipt_vault::RepayMsg { callback: None },
+        ))?,
         funds: coins,
     }))
 }

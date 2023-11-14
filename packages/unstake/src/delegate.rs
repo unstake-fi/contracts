@@ -1,4 +1,4 @@
-use crate::broker::Offer;
+use crate::{adapter::Adapter, broker::Offer};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Addr;
 
@@ -14,6 +14,9 @@ pub struct InstantiateMsg {
 
     /// The Offer created by the controller's Broker
     pub offer: Offer,
+
+    /// The adapter for unbonding,
+    pub adapter: Adapter,
 }
 
 #[cw_serde]
