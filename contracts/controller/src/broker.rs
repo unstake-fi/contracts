@@ -15,7 +15,7 @@ static BROKER: Item<Broker> = Item::new("broker");
 // The amount of the staked asset that we have as a reserve to pay excess interest
 static RESERVES: Item<Uint128> = Item::new("reserves");
 
-static YEAR_SECONDS: Uint128 = Uint128::from(365u128 * 24 * 60 * 60);
+static YEAR_SECONDS: u128 = 365 * 24 * 60 * 60;
 
 /// The Broker is responsible for managing protocol reserves, and making Unstaking offers
 #[cw_serde]
@@ -78,7 +78,7 @@ impl Broker {
         Ok(offer)
     }
 
-    pub fn accept_offer(&self, deps: DepsMut, offer: Offer) -> StdResult<()> {
+    pub fn accept_offer(&self, deps: DepsMut, offer: &Offer) -> StdResult<()> {
         let mut available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
         available_reserve -= offer.reserve_allocation;
         RESERVES.save(deps.storage, &available_reserve)?;
@@ -89,12 +89,18 @@ impl Broker {
         amount
             .mul(rate)
             .mul(Uint128::from(self.duration.as_secs()))
-            .div(YEAR_SECONDS)
+            .div(Uint128::from(YEAR_SECONDS))
     }
 
-    pub fn fetch_current_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {}
-    pub fn fetch_max_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {}
-    pub fn fetch_redemption_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {}
+    pub fn fetch_current_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {
+        todo!()
+    }
+    pub fn fetch_max_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {
+        todo!()
+    }
+    pub fn fetch_redemption_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {
+        todo!()
+    }
 }
 
 /// The details of an offer returned by the Broker
