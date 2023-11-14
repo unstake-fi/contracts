@@ -5,7 +5,7 @@ use std::{
 };
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Decimal, QuerierWrapper, StdResult, Storage, Uint128};
+use cosmwasm_std::{Addr, Decimal, Deps, DepsMut, QuerierWrapper, StdResult, Storage, Uint128};
 use cw_storage_plus::Item;
 
 use crate::ContractError;
@@ -36,15 +36,10 @@ impl Broker {
     }
 
     /// Make an offer for a givan `amount` of the staked token
-    pub fn offer(
-        &self,
-        storage: &mut dyn Storage,
-        query: QuerierWrapper,
-        amount: Uint128,
-    ) -> Result<Offer, ContractError> {
-        let redemption_rate = self.fetch_redemption_rate(query)?;
-        let current_rate = self.fetch_current_rate(query)?;
-        let max_rate = self.fetch_max_rate(query)?;
+    pub fn offer(&self, deps: Deps, amount: Uint128) -> Result<Offer, ContractError> {
+        let redemption_rate = self.fetch_redemption_rate(deps.querier)?;
+        let current_rate = self.fetch_current_rate(deps.querier)?;
+        let max_rate = self.fetch_max_rate(deps.querier)?;
 
         // Calculate the value of the Unstaked amount, in terms of the underlying asset. I.e. the max amount we'll need to borrow
         let value = amount.mul(redemption_rate);
@@ -60,16 +55,12 @@ impl Broker {
         // Ensure we have enough reserves available to cover the max potential shortfall - ie the lend APR spiking to max
         // in the following block, and remaining there for the whole period
         // This is something that we can look to relax in due course, but for now it provides an absolute guarantee of solvency
-        let reserve_requirement = self.interest_amount(value, max_rate_shortfall);
-        let mut available_reserve = RESERVES.load(storage).unwrap_or_default();
+        let reserve_allocation = self.interest_amount(value, max_rate_shortfall);
+        let available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
 
-        if reserve_requirement.gt(&available_reserve) {
+        if reserve_allocation.gt(&available_reserve) {
             return Err(ContractError::InsufficentReserves {});
         };
-
-        available_reserve -= reserve_requirement;
-
-        RESERVES.save(storage, &available_reserve)?;
 
         // Calculate the total that we'll charge in up-front interest
         let fee = self.interest_amount(value, offer_rate);
@@ -80,9 +71,18 @@ impl Broker {
         // Therefore when the unbonded tokens return, we will have a surplus after the debt has been repaid.
         let offer = Offer {
             amount: value.sub(fee),
+            reserve_allocation,
+            fee,
         };
 
         Ok(offer)
+    }
+
+    pub fn accept_offer(&self, deps: DepsMut, offer: Offer) -> StdResult<()> {
+        let mut available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
+        available_reserve -= offer.reserve_allocation;
+        RESERVES.save(deps.storage, &available_reserve)?;
+        Ok(())
     }
 
     fn interest_amount(&self, amount: Uint128, rate: Decimal) -> Uint128 {
@@ -101,4 +101,11 @@ impl Broker {
 pub struct Offer {
     /// The amount that we can safely borrow from GHOST and return to the Unstaker
     pub amount: Uint128,
+
+    /// The amount of the offer amount that has been retained as a fee to cover interest.
+    /// amount + fee_amount == unbond_amount * redemption_rate
+    pub fee: Uint128,
+
+    /// The amount of reserves allocated to this offer
+    pub reserve_allocation: Uint128,
 }

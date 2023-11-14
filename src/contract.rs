@@ -1,10 +1,13 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cw_utils::must_pay;
+use kujira::Denom;
 // use cw2::set_contract_version;
 
+use crate::broker::Broker;
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
 
 /*
 // version info for migration info
@@ -24,17 +27,37 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    _deps: DepsMut,
+    deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
-    _msg: ExecuteMsg,
+    info: MessageInfo,
+    msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
-    unimplemented!()
+    match msg {
+        ExecuteMsg::Unstake { max_fee } => {
+            let denom = Denom::from(todo());
+            let amount = must_pay(&info, &denom.to_string())?;
+            let broker = Broker::load(deps.storage)?;
+            let offer = broker.offer(deps.as_ref(), amount)?;
+            if offer.fee.gt(&max_fee) {
+                return Err(ContractError::MaxFeeExceeded {});
+            };
+            broker.accept_offer(deps, offer)?;
+            let send_msg = denom.send(&info.sender, &offer.amount);
+            Ok(Response::default().add_message(send_msg))
+        }
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(_deps: Deps, _env: Env, _msg: QueryMsg) -> StdResult<Binary> {
-    unimplemented!()
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+    match msg {
+        QueryMsg::Offer { amount } => {
+            let denom = Denom::from(todo());
+            let broker = Broker::load(deps.storage)?;
+            let offer = broker.offer(deps, amount)?;
+            Ok(to_json_binary(&OfferResponse::from(offer))?)
+        }
+    }
 }
 
 #[cfg(test)]
