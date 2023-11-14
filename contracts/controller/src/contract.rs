@@ -109,13 +109,17 @@ pub fn execute(
 
             let debt_tokens = amount(&config.debt_denom(), info.funds.clone())?;
             let returned_tokens = amount(&config.offer_denom, info.funds)?;
+            let broker = Broker::load(deps.storage)?;
+
+            // Calculate how much we need to send back to Ghost. Could be more or less than the offer amount
+            let repay_amount = broker.close_offer(deps, &offer, debt_tokens, returned_tokens)?;
+
             let mut funds = NativeBalance(vec![
                 config.debt_denom().coin(&debt_tokens),
-                config.offer_denom.coin(&returned_tokens),
+                config.offer_denom.coin(&repay_amount),
             ]);
             funds.normalize();
-            let broker = Broker::load(deps.storage)?;
-            broker.close_offer(deps, &offer, debt_tokens, returned_tokens)?;
+
             let ghost_repay_msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: config.vault_address.to_string(),
                 msg: to_json_binary(&kujira::ghost::receipt_vault::RepayMsg { callback: None })?,
