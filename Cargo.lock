@@ -882,6 +882,7 @@ dependencies = [
  "cw-storage-plus",
  "cw-utils",
  "kujira",
+ "kujira-ghost",
  "schemars",
  "serde",
  "thiserror",

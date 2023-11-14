@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Deps, DepsMut, StdResult};
+use cosmwasm_std::{Addr, Decimal, Deps, DepsMut, StdResult};
 use cw_storage_plus::Item;
 use kujira::Denom;
 use unstake::{adapter::Adapter, controller::InstantiateMsg};
@@ -9,6 +9,7 @@ static CONFIG: Item<Config> = Item::new("config");
 #[cw_serde]
 pub struct Config {
     pub owner: Addr,
+    pub protocol_fee: Decimal,
     pub delegate_code_id: u64,
     pub vault_address: Addr,
     pub offer_denom: Denom,
@@ -34,6 +35,7 @@ impl From<InstantiateMsg> for Config {
     fn from(value: InstantiateMsg) -> Self {
         Self {
             owner: value.owner,
+            protocol_fee: value.protocol_fee,
             delegate_code_id: value.delegate_code_id,
             vault_address: value.vault_address,
             offer_denom: value.offer_denom,

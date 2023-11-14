@@ -7,7 +7,7 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
-use kujira::amount;
+use kujira::{amount, fee_address};
 use unstake::controller::{DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
 use unstake::helpers::{predict_address, Controller};
 use unstake::{broker::Broker, ContractError};
@@ -97,7 +97,7 @@ pub fn execute(
                 salt,
             };
 
-            DELEGATES.save(deps.storage, address, &())?;
+            DELEGATES.save(deps.storage, address, &env.block.time)?;
 
             Ok(Response::default().add_message(instantiate))
         }
@@ -112,7 +112,13 @@ pub fn execute(
             let broker = Broker::load(deps.storage)?;
 
             // Calculate how much we need to send back to Ghost. Could be more or less than the offer amount
-            let repay_amount = broker.close_offer(deps, &offer, debt_tokens, returned_tokens)?;
+            let (repay_amount, protocol_fee_amount) = broker.close_offer(
+                deps,
+                &offer,
+                debt_tokens,
+                returned_tokens,
+                config.protocol_fee,
+            )?;
 
             let mut funds = NativeBalance(vec![
                 config.debt_denom().coin(&debt_tokens),
@@ -126,7 +132,16 @@ pub fn execute(
                 funds: funds.into_vec(),
             });
 
-            Ok(Response::default().add_message(ghost_repay_msg))
+            let mut msgs = vec![ghost_repay_msg];
+            if !protocol_fee_amount.is_zero() {
+                msgs.push(
+                    config
+                        .offer_denom
+                        .send(&fee_address(), &protocol_fee_amount),
+                )
+            }
+
+            Ok(Response::default().add_messages(msgs))
         }
     }
 }
@@ -140,8 +155,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             Ok(to_json_binary(&OfferResponse::from(offer))?)
         }
         QueryMsg::Delegates {} => {
-            let delegates: Vec<(Addr, Timestamp)> =
-                DELEGATES.range(deps.storage, None, None, Order::Ascending)?;
+            let delegates = DELEGATES
+                .range(deps.storage, None, None, Order::Ascending)
+                .collect::<StdResult<Vec<(Addr, Timestamp)>>>()?;
             let response = DelegatesResponse { delegates };
             Ok(to_json_binary(&response)?)
         }

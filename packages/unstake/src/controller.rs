@@ -1,11 +1,12 @@
 use crate::{adapter::Adapter, broker::Offer};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Timestamp, Uint128};
+use cosmwasm_std::{Addr, Decimal, Timestamp, Uint128};
 use kujira::Denom;
 
 #[cw_serde]
 pub struct InstantiateMsg {
     pub owner: Addr,
+    pub protocol_fee: Decimal,
     pub delegate_code_id: u64,
     pub vault_address: Addr,
     /// The ask denom of the Broker - ie the LST/receipt token

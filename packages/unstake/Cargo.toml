@@ -14,3 +14,4 @@ cw-utils = { workspace = true }
 thiserror = "1"
 schemars = { workspace = true }
 serde = { workspace = true }
+kujira-ghost = { workspace = true }

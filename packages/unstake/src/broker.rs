@@ -38,8 +38,8 @@ impl Broker {
     /// Make an offer for a givan `amount` of the staked token
     pub fn offer(&self, deps: Deps, amount: Uint128) -> Result<Offer, ContractError> {
         let redemption_rate = self.fetch_redemption_rate(deps.querier)?;
-        let current_rate = self.fetch_current_rate(deps.querier)?;
-        let max_rate = self.fetch_max_rate(deps.querier)?;
+        let current_rate = self.fetch_current_interest_rate(deps.querier)?;
+        let max_rate = self.fetch_max_interest_rate(deps.querier)?;
 
         // Calculate the value of the Unstaked amount, in terms of the underlying asset. I.e. the max amount we'll need to borrow
         let value = amount.mul(redemption_rate);
@@ -87,14 +87,38 @@ impl Broker {
         Ok(())
     }
 
+    /// Receives the original offer, debt tokens, and returned unbonded tokens from the delegate,
+    /// reconciles the reserves
     pub fn close_offer(
         &self,
-        _deps: DepsMut,
-        _offer: &Offer,
-        _debt_tokens: Uint128,
-        _returned_tokens: Uint128,
-    ) -> StdResult<()> {
-        todo!()
+        deps: DepsMut,
+        offer: &Offer,
+        debt_tokens: Uint128,
+        returned_tokens: Uint128,
+        protocol_fee: Decimal,
+    ) -> StdResult<(Uint128, Uint128)> {
+        let debt_rate = self.fetch_debt_rate(deps.querier)?;
+        let debt_amount = debt_tokens * debt_rate;
+        let mut available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
+
+        // Start off by naively re-allocating the reserve back to the total
+        available_reserve += offer.reserve_allocation;
+        let protocol_fee_amount: Uint128;
+
+        if debt_amount.gt(&returned_tokens) {
+            // Interest rate has been higher than quoted. Handle the loss.
+            protocol_fee_amount = Uint128::zero();
+            available_reserve -= debt_amount.sub(returned_tokens)
+        } else {
+            // We've made profit on this Unstake. Distribute accordingly
+            // NB we only take profit if there is a surplus after the unbonding, otherwise it would deplete
+            // reserves unncessarily
+            let profit = returned_tokens.sub(debt_amount);
+            protocol_fee_amount = protocol_fee.mul(profit);
+            let reserve_contribution = profit.sub(protocol_fee_amount);
+            available_reserve += reserve_contribution
+        }
+        Ok((debt_amount, protocol_fee_amount))
     }
 
     fn interest_amount(&self, amount: Uint128, rate: Decimal) -> Uint128 {
@@ -104,13 +128,32 @@ impl Broker {
             .div(Uint128::from(YEAR_SECONDS))
     }
 
-    pub fn fetch_current_rate(&self, _query: QuerierWrapper) -> StdResult<Decimal> {
-        todo!()
+    fn fetch_debt_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {
+        let status: kujira_ghost::receipt_vault::StatusResponse = query.query_wasm_smart(
+            self.vault.to_string(),
+            &kujira_ghost::receipt_vault::QueryMsg::Status {},
+        )?;
+
+        Ok(status.debt_share_ratio)
     }
-    pub fn fetch_max_rate(&self, _query: QuerierWrapper) -> StdResult<Decimal> {
-        todo!()
+
+    fn fetch_current_interest_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {
+        let status: kujira_ghost::receipt_vault::StatusResponse = query.query_wasm_smart(
+            self.vault.to_string(),
+            &kujira_ghost::receipt_vault::QueryMsg::Status {},
+        )?;
+
+        Ok(status.rate)
     }
-    pub fn fetch_redemption_rate(&self, _query: QuerierWrapper) -> StdResult<Decimal> {
+    fn fetch_max_interest_rate(&self, _query: QuerierWrapper) -> StdResult<Decimal> {
+        // TODO: Publish & ise new interest rate params
+        // let rates: kujira_ghost::receipt_vault::InterestParamsResponse = query.query_wasm_smart(
+        //     self.vault.to_string(),
+        //     &kujira_ghost::receipt_vault::QueryMsg::InterestParams {},
+        // )?;
+        Ok(Decimal::from_ratio(3u128, 1u128))
+    }
+    fn fetch_redemption_rate(&self, _query: QuerierWrapper) -> StdResult<Decimal> {
         todo!()
     }
 }
