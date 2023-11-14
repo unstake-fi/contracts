@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{ensure_eq, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response};
 use cw_storage_plus::Item;
 use unstake::broker::Offer;
 use unstake::delegate::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -40,6 +40,11 @@ pub fn execute(
                 .add_message(callback_msg))
         }
         ExecuteMsg::Callback {} => {
+            ensure_eq!(
+                info.sender,
+                env.contract.address,
+                ContractError::Unauthorized {}
+            );
             let funds = deps.querier.query_all_balances(env.contract.address)?;
             let offer = OFFER.load(deps.storage)?;
             let controller_msg = Controller(CONTROLLER.load(deps.storage)?)
