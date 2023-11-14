@@ -8,8 +8,6 @@ use cosmwasm_std::{
 
 use crate::ContractError;
 
-/// Delegate is a wrapper around Addr that provides a lot of helpers
-/// for working with this.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct Delegate(pub Addr);
 
@@ -33,8 +31,6 @@ impl Delegate {
     }
 }
 
-/// Controller is a wrapper around Addr that provides a lot of helpers
-/// for working with this.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct Controller(pub Addr);
 
