@@ -1,6 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cw2::set_contract_version;
 use cw_utils::must_pay;
 use kujira::Denom;
 // use cw2::set_contract_version;
@@ -9,19 +10,18 @@ use crate::broker::Broker;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
 
-/*
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:unstake";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-*/
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    _deps: DepsMut,
+    deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
     _msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     unimplemented!()
 }
 
