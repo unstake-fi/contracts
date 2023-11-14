@@ -2,13 +2,10 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
-use cw_utils::must_pay;
-use kujira::Denom;
-// use cw2::set_contract_version;
-
-use crate::broker::Broker;
-use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
+use cw_utils::{must_pay, one_coin, NativeBalance};
+use kujira::{amount, Denom};
+use unstake::controller::{ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
+use unstake::{broker::Broker, ContractError};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:unstake";
@@ -44,6 +41,15 @@ pub fn execute(
             broker.accept_offer(deps, &offer)?;
             let send_msg = denom.send(&info.sender, &offer.amount);
             Ok(Response::default().add_message(send_msg))
+        }
+        ExecuteMsg::Complete { offer } => {
+            // TODO verify calling contract
+            let debt_tokens = amount(&Denom::from("TODO: debt_denom"), info.funds.clone())?;
+            let returned_tokens = amount(&Denom::from("TODO: quote_denom"), info.funds)?;
+            let broker = Broker::load(deps.storage)?;
+            broker.close_offer(deps, &offer, debt_tokens, returned_tokens)?;
+
+            Ok(Response::default())
         }
     }
 }

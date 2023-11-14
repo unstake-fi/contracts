@@ -1,6 +1,6 @@
 use cosmwasm_schema::write_api;
 
-use unstake_delegate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use unstake::delegate::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 fn main() {
     write_api! {

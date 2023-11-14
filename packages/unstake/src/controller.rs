@@ -1,14 +1,20 @@
+use crate::broker::Offer;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
-
-use crate::broker::Offer;
 
 #[cw_serde]
 pub struct InstantiateMsg {}
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    Unstake { max_fee: Uint128 },
+    Unstake {
+        max_fee: Uint128,
+    },
+    /// Called by a delegate contract when the unbonding process is complete.
+    /// Returns the unbonded tokens, the debt tokens for ghost, and the corresponding offer
+    Complete {
+        offer: Offer,
+    },
 }
 
 #[cw_serde]

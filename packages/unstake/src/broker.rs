@@ -85,6 +85,16 @@ impl Broker {
         Ok(())
     }
 
+    pub fn close_offer(
+        &self,
+        deps: DepsMut,
+        offer: &Offer,
+        debt_tokens: Uint128,
+        returned_tokens: Uint128,
+    ) -> StdResult<()> {
+        todo!()
+    }
+
     fn interest_amount(&self, amount: Uint128, rate: Decimal) -> Uint128 {
         amount
             .mul(rate)
@@ -104,6 +114,7 @@ impl Broker {
 }
 
 /// The details of an offer returned by the Broker
+#[cw_serde]
 pub struct Offer {
     /// The amount that we can safely borrow from GHOST and return to the Unstaker
     pub amount: Uint128,
