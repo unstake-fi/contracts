@@ -1,6 +1,6 @@
 use crate::{adapter::Adapter, broker::Offer};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Timestamp, Uint128};
 use kujira::Denom;
 
 #[cw_serde]
@@ -43,12 +43,20 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(OfferResponse)]
     Offer { amount: Uint128 },
+
+    #[returns(DelegatesResponse)]
+    Delegates {},
 }
 
 #[cw_serde]
 pub struct OfferResponse {
     amount: Uint128,
     fee: Uint128,
+}
+
+#[cw_serde]
+pub struct DelegatesResponse {
+    pub delegates: Vec<(Addr, Timestamp)>,
 }
 
 impl From<Offer> for OfferResponse {

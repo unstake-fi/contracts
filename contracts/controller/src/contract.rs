@@ -2,13 +2,13 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     ensure_eq, to_json_binary, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, WasmMsg,
+    Order, Response, StdResult, Timestamp, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
 use kujira::amount;
-use unstake::controller::{ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
+use unstake::controller::{DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
 use unstake::helpers::{predict_address, Controller};
 use unstake::{broker::Broker, ContractError};
 
@@ -18,7 +18,7 @@ use crate::config::Config;
 const CONTRACT_NAME: &str = "crates.io:unstake";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-static DELEGATES: Map<Addr, ()> = Map::new("delegates");
+static DELEGATES: Map<Addr, Timestamp> = Map::new("delegates");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -138,6 +138,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             let broker = Broker::load(deps.storage)?;
             let offer = broker.offer(deps, amount)?;
             Ok(to_json_binary(&OfferResponse::from(offer))?)
+        }
+        QueryMsg::Delegates {} => {
+            let delegates: Vec<(Addr, Timestamp)> =
+                DELEGATES.range(deps.storage, None, None, Order::Ascending)?;
+            let response = DelegatesResponse { delegates };
+            Ok(to_json_binary(&response)?)
         }
     }
 }
