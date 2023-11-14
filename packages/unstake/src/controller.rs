@@ -1,9 +1,19 @@
 use crate::broker::Offer;
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Addr, Uint128};
+use kujira::Denom;
 
 #[cw_serde]
-pub struct InstantiateMsg {}
+pub struct InstantiateMsg {
+    pub owner: Addr,
+    pub delegate_code_id: u8,
+    pub vault_address: Addr,
+    /// The ask denom of the Broker - ie the LST/receipt token
+    pub ask_denom: Denom,
+
+    /// The offer denom of the Broker - ie the underlying bonded token
+    pub offer_denom: Denom,
+}
 
 #[cw_serde]
 pub enum ExecuteMsg {
