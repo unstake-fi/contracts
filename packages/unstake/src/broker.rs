@@ -8,7 +8,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal, Deps, DepsMut, QuerierWrapper, StdResult, Storage, Uint128};
 use cw_storage_plus::Item;
 
-use crate::ContractError;
+use crate::{adapter::Adapter, ContractError};
 
 static BROKER: Item<Broker> = Item::new("broker");
 
@@ -31,13 +31,20 @@ pub struct Broker {
 }
 
 impl Broker {
-    pub fn load(storage: &dyn Storage) -> StdResult<Self> {
-        BROKER.load(storage)
+    pub fn load(deps: Deps) -> StdResult<Self> {
+        BROKER.load(deps.storage)
     }
 
     /// Make an offer for a givan `amount` of the staked token
-    pub fn offer(&self, deps: Deps, amount: Uint128) -> Result<Offer, ContractError> {
-        let redemption_rate = self.fetch_redemption_rate(deps.querier)?;
+    pub fn offer(
+        &self,
+        deps: Deps,
+        adapter: &Adapter,
+        amount: Uint128,
+    ) -> Result<Offer, ContractError> {
+        let redemption_rate = match adapter {
+            Adapter::Contract(c) => c.redemption_rate(deps.querier)?,
+        };
         let current_rate = self.fetch_current_interest_rate(deps.querier)?;
         let max_rate = self.fetch_max_interest_rate(deps.querier)?;
 
@@ -146,15 +153,12 @@ impl Broker {
         Ok(status.rate)
     }
     fn fetch_max_interest_rate(&self, _query: QuerierWrapper) -> StdResult<Decimal> {
-        // TODO: Publish & ise new interest rate params
+        // TODO: Publish & use new interest rate params
         // let rates: kujira_ghost::receipt_vault::InterestParamsResponse = query.query_wasm_smart(
         //     self.vault.to_string(),
         //     &kujira_ghost::receipt_vault::QueryMsg::InterestParams {},
         // )?;
         Ok(Decimal::from_ratio(3u128, 1u128))
-    }
-    fn fetch_redemption_rate(&self, _query: QuerierWrapper) -> StdResult<Decimal> {
-        todo!()
     }
 }
 

@@ -44,8 +44,8 @@ pub fn execute(
     match msg {
         ExecuteMsg::Unstake { max_fee } => {
             let amount = must_pay(&info, &config.ask_denom.to_string())?;
-            let broker = Broker::load(deps.storage)?;
-            let offer = broker.offer(deps.as_ref(), amount)?;
+            let broker = Broker::load(deps.as_ref())?;
+            let offer = broker.offer(deps.as_ref(), &config.adapter, amount)?;
             if offer.fee.gt(&max_fee) {
                 return Err(ContractError::MaxFeeExceeded {});
             };
@@ -109,7 +109,7 @@ pub fn execute(
 
             let debt_tokens = amount(&config.debt_denom(), info.funds.clone())?;
             let returned_tokens = amount(&config.offer_denom, info.funds)?;
-            let broker = Broker::load(deps.storage)?;
+            let broker = Broker::load(deps.as_ref())?;
 
             // Calculate how much we need to send back to Ghost. Could be more or less than the offer amount
             let (repay_amount, protocol_fee_amount) = broker.close_offer(
@@ -150,8 +150,9 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::Offer { amount } => {
-            let broker = Broker::load(deps.storage)?;
-            let offer = broker.offer(deps, amount)?;
+            let config = Config::load(deps)?;
+            let broker = Broker::load(deps)?;
+            let offer = broker.offer(deps, &config.adapter, amount)?;
             Ok(to_json_binary(&OfferResponse::from(offer))?)
         }
         QueryMsg::Delegates {} => {
