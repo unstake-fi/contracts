@@ -1,7 +1,10 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{to_json_binary, Addr, Coin, CosmosMsg, WasmMsg};
+use cosmwasm_std::{
+    instantiate2_address, to_json_binary, Addr, Binary, CodeInfoResponse, Coin, CosmosMsg, Deps,
+    DepsMut, Env, StdResult, WasmMsg,
+};
 
 use crate::ContractError;
 
@@ -53,4 +56,20 @@ impl Controller {
         }
         .into())
     }
+}
+
+pub fn predict_address(
+    code_id: u64,
+    label: &String,
+    deps: &Deps,
+    env: &Env,
+) -> StdResult<(Addr, Binary)> {
+    let CodeInfoResponse { checksum, .. } = deps.querier.query_wasm_code_info(code_id)?;
+    let salt = Binary::from(label.as_bytes().chunks(64).next().unwrap());
+    let creator = deps.api.addr_canonicalize(env.contract.address.as_str())?;
+    let contract_addr = deps
+        .api
+        .addr_humanize(&instantiate2_address(&checksum, &creator, &salt).unwrap())?;
+
+    Ok((contract_addr, salt))
 }

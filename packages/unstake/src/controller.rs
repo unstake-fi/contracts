@@ -6,7 +6,7 @@ use kujira::Denom;
 #[cw_serde]
 pub struct InstantiateMsg {
     pub owner: Addr,
-    pub delegate_code_id: u8,
+    pub delegate_code_id: u64,
     pub vault_address: Addr,
     /// The ask denom of the Broker - ie the LST/receipt token
     pub ask_denom: Denom,
@@ -20,6 +20,14 @@ pub enum ExecuteMsg {
     Unstake {
         max_fee: Uint128,
     },
+
+    /// Called after the GHOST withdrawal has been made.
+    /// At this point, the only funds on the contract will be the received debt tokens from GHOST,
+    /// and the received Ask tokens from the user
+    UnstakeCallback {
+        offer: Offer,
+    },
+
     /// Called by a delegate contract when the unbonding process is complete.
     /// Returns the unbonded tokens, the debt tokens for ghost, and the corresponding offer
     Complete {

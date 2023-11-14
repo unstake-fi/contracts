@@ -5,7 +5,9 @@ use std::{
 };
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Decimal, Deps, DepsMut, QuerierWrapper, StdResult, Storage, Uint128};
+use cosmwasm_std::{
+    Addr, CosmosMsg, Decimal, Deps, DepsMut, QuerierWrapper, StdResult, Storage, Uint128,
+};
 use cw_storage_plus::Item;
 
 use crate::ContractError;
@@ -78,6 +80,8 @@ impl Broker {
         Ok(offer)
     }
 
+    /// Commits the offer, deducts the reserve allocation from the total reservce, and returns
+    /// messages that will instantiate the delegate contract with the debt tokens and ask tokens
     pub fn accept_offer(&self, deps: DepsMut, offer: &Offer) -> StdResult<()> {
         let mut available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
         available_reserve -= offer.reserve_allocation;

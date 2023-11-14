@@ -46,6 +46,7 @@ cw-storage-plus = { workspace = true }
 cw-utils = { workspace = true }
 cw2 = { workspace = true }
 kujira = { workspace = true }
+kujira-ghost = { workspace = true }
 unstake = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }

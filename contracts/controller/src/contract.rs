@@ -1,12 +1,15 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response, WasmMsg,
+    ensure_eq, to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response,
+    WasmMsg,
 };
 use cw2::set_contract_version;
+use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
 use kujira::{amount, Denom};
 use unstake::controller::{ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
+use unstake::helpers::{predict_address, Controller};
 use unstake::{broker::Broker, ContractError};
 
 use crate::config::Config;
@@ -14,6 +17,8 @@ use crate::config::Config;
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:unstake";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+static DELEGATES: Map<Addr, ()> = Map::new("delegates");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -31,7 +36,7 @@ pub fn instantiate(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
@@ -46,10 +51,56 @@ pub fn execute(
             };
             broker.accept_offer(deps, &offer)?;
             let send_msg = config.offer_denom.send(&info.sender, &offer.amount);
-            Ok(Response::default().add_message(send_msg))
+            let borrow_message = vault_borrow_msg(&config.vault_address, offer.amount)?;
+            let callback_msg = Controller(env.contract.address)
+                .call(ExecuteMsg::UnstakeCallback { offer }, vec![])?;
+
+            Ok(Response::default()
+                .add_message(send_msg)
+                .add_message(borrow_msg)
+                .add_message(callback_msg))
+        }
+        ExecuteMsg::UnstakeCallback { offer } => {
+            ensure_eq!(
+                info.sender,
+                env.contract.address,
+                ContractError::Unauthorized {}
+            );
+            let funds = deps.querier.query_all_balances(env.contract.address)?;
+
+            let label: String = format!(
+                "Unstake.fi delegate {}/{}",
+                env.block.height,
+                env.transaction.map(|x| x.index).unwrap_or_default()
+            );
+
+            let (address, salt) =
+                predict_address(config.delegate_code_id, &label, &deps.as_ref(), &env)?;
+
+            let msg = unstake::delegate::InstantiateMsg {
+                controller: env.contract.address.clone(),
+                offer: offer.clone(),
+            };
+
+            let instantiate: WasmMsg = WasmMsg::Instantiate2 {
+                admin: Some(env.contract.address.into()),
+                code_id: config.delegate_code_id,
+                label,
+                msg: to_json_binary(&msg)?,
+                funds,
+                salt,
+            };
+
+            DELEGATES.save(deps.storage, address, &())?;
+
+            Ok(Response::default())
         }
         ExecuteMsg::Complete { offer } => {
-            // TODO verify calling contract
+            DELEGATES
+                .load(deps.storage, info.sender)
+                .map_err(|_| ContractError::Unauthorized {})?;
+            DELEGATES.remove(deps.storage, info.sender);
+
             let debt_tokens = amount(&config.debt_denom(), info.funds.clone())?;
             let returned_tokens = amount(&config.offer_denom, info.funds)?;
             let mut funds = NativeBalance(vec![
@@ -80,6 +131,25 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             Ok(to_json_binary(&OfferResponse::from(offer))?)
         }
     }
+}
+
+pub fn vault_borrow_msg(addr: &Addr, amount: Uint128) -> StdResult<CosmosMsg> {
+    Ok(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: addr.to_string(),
+        msg: to_binary(&VaultExecuteMsg::Borrow(BorrowMsg {
+            amount,
+            callback: None,
+        }))?,
+        funds: vec![],
+    }))
+}
+
+pub fn vault_repay_msg(addr: &Addr, coins: Vec<Coin>) -> StdResult<CosmosMsg> {
+    Ok(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: addr.to_string(),
+        msg: to_binary(&VaultExecuteMsg::Repay(RepayMsg { callback: None }))?,
+        funds: coins,
+    }))
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ static CONFIG: Item<Config> = Item::new("config");
 #[cw_serde]
 pub struct Config {
     pub owner: Addr,
-    pub delegate_code_id: u8,
+    pub delegate_code_id: u64,
     pub vault_address: Addr,
     pub offer_denom: Denom,
     pub ask_denom: Denom,
