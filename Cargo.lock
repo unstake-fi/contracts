@@ -890,6 +890,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "unstake-delegate"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-storage-plus",
+ "cw-utils",
+ "cw2",
+ "kujira",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
