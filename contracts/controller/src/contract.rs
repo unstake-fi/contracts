@@ -43,7 +43,7 @@ pub fn execute(
     let config = Config::load(deps.as_ref())?;
     match msg {
         ExecuteMsg::Unstake { max_fee } => {
-            let amount = must_pay(&info, &config.ask_denom.to_string())?;
+            let amount = must_pay(&info, config.ask_denom.as_ref())?;
             let broker = Broker::load(deps.as_ref())?;
             let offer = broker.offer(deps.as_ref(), &config.adapter, amount)?;
             if offer.fee.gt(&max_fee) {
