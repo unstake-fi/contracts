@@ -12,7 +12,8 @@ use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
 use kujira::{fee_address, Denom, KujiraMsg, KujiraQuery};
 use unstake::controller::{
-    DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg, RatesResponse,
+    ConfigResponse, DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg,
+    RatesResponse,
 };
 use unstake::helpers::{predict_address, Controller};
 use unstake::rates::Rates;
@@ -216,6 +217,7 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
             Ok(to_json_binary(&response)?)
         }
         QueryMsg::Rates {} => Ok(to_json_binary(&RatesResponse::from(rates))?),
+        QueryMsg::Config {} => Ok(to_json_binary(&ConfigResponse::from(config))?),
     }
 }
 

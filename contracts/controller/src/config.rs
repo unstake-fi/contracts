@@ -2,7 +2,10 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal, StdResult, Storage};
 use cw_storage_plus::Item;
 use kujira::Denom;
-use unstake::{adapter::Adapter, controller::InstantiateMsg};
+use unstake::{
+    adapter::Adapter,
+    controller::{ConfigResponse, InstantiateMsg},
+};
 
 static CONFIG: Item<Config> = Item::new("config");
 
@@ -59,6 +62,20 @@ impl From<InstantiateMsg> for Config {
             offer_denom: value.offer_denom,
             ask_denom: value.ask_denom,
             adapter: value.adapter,
+        }
+    }
+}
+
+impl From<Config> for ConfigResponse {
+    fn from(value: Config) -> Self {
+        Self {
+            owner: value.owner,
+            protocol_fee: value.protocol_fee,
+            delegate_code_id: value.delegate_code_id,
+            vault_address: value.vault_address,
+            offer_denom: value.offer_denom,
+            ask_denom: value.ask_denom,
+            adapter: value.adapter.into(),
         }
     }
 }

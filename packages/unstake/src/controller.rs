@@ -1,6 +1,6 @@
 use crate::{adapter::Adapter, broker::Offer, rates::Rates};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Coin, Decimal, Timestamp, Uint128};
+use cosmwasm_std::{Addr, Binary, Coin, Decimal, Timestamp, Uint128};
 use kujira::Denom;
 
 #[cw_serde]
@@ -74,6 +74,9 @@ pub enum QueryMsg {
 
     #[returns(RatesResponse)]
     Rates {},
+
+    #[returns(ConfigResponse)]
+    Config {},
 }
 
 #[cw_serde]
@@ -87,6 +90,30 @@ pub struct RatesResponse {
     pub debt: Decimal,
     pub interest: Decimal,
     pub max_interest: Decimal,
+}
+
+#[cw_serde]
+pub struct ConfigResponse {
+    pub owner: Addr,
+    pub protocol_fee: Decimal,
+    pub delegate_code_id: u64,
+    pub vault_address: Addr,
+    pub offer_denom: Denom,
+    pub ask_denom: Denom,
+    pub adapter: AdapterResponse,
+}
+
+#[cw_serde]
+pub enum AdapterResponse {
+    Contract(ContractResponse),
+}
+
+#[cw_serde]
+pub struct ContractResponse {
+    pub address: Addr,
+    pub redemption_rate_query: Binary,
+    pub unbond_start_msg: Binary,
+    pub unbond_end_msg: Binary,
 }
 
 #[cw_serde]
@@ -109,6 +136,19 @@ impl From<Rates> for RatesResponse {
             debt: value.debt,
             interest: value.interest,
             max_interest: value.max_interest,
+        }
+    }
+}
+
+impl From<Adapter> for AdapterResponse {
+    fn from(value: Adapter) -> Self {
+        match value {
+            Adapter::Contract(contract) => AdapterResponse::Contract(ContractResponse {
+                address: contract.address,
+                redemption_rate_query: contract.redemption_rate_query,
+                unbond_start_msg: contract.unbond_start_msg,
+                unbond_end_msg: contract.unbond_end_msg,
+            }),
         }
     }
 }

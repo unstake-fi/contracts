@@ -6,5 +6,5 @@ The Instant Unstaking protocol for the interchain, only on @TeamKujira. Don’t 
 
 ### Testnet
 
-- controller: code id `2685`
+- controller: code id `2686`
 - delegate: code id `2679`
