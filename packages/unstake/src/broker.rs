@@ -1,5 +1,5 @@
 use std::{
-    cmp::max,
+    cmp::{max, min},
     ops::{Add, Div, Mul, Sub},
 };
 
@@ -154,29 +154,45 @@ impl Broker {
         debt_tokens: Uint128,
         returned_tokens: Uint128,
         protocol_fee: Decimal,
-    ) -> StdResult<(Uint128, Uint128)> {
+    ) -> Result<(Uint128, Uint128), ContractError> {
         let debt_rate = self.fetch_debt_rate(deps.querier)?;
         let debt_amount = debt_tokens.mul_ceil(debt_rate);
+        let mut returned_tokens = returned_tokens;
         let mut available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
 
-        // Start off by naively re-allocating the reserve back to the total
-        available_reserve += offer.reserve_allocation;
-        let protocol_fee_amount: Uint128;
+        // We will always have enough to repay the GHOST debt -
+        // the fee + reserve allocation will cover the potential shortfall
+
+        // But check anyway
 
         if debt_amount.gt(&returned_tokens) {
-            // Interest rate has been higher than quoted. Handle the loss.
-            protocol_fee_amount = Uint128::zero();
-            available_reserve -= debt_amount.sub(returned_tokens)
-        } else {
-            // We've made profit on this Unstake. Distribute accordingly
-            // NB we only take profit if there is a surplus after the unbonding, otherwise it would deplete
-            // reserves unncessarily
-            let profit = returned_tokens.sub(debt_amount);
-            protocol_fee_amount = protocol_fee.mul(profit);
-            let reserve_contribution = profit.sub(protocol_fee_amount);
-            available_reserve += reserve_contribution
+            return Err(ContractError::Insolvent {
+                debt_remaining: debt_amount.sub(returned_tokens),
+            });
         }
-        Ok((debt_amount, protocol_fee_amount))
+
+        // Ok, now let's proceed to allocate the returned tokens in priority.
+
+        // Number one. Repay GHOST
+        returned_tokens -= debt_amount;
+
+        // Number two. Repay the solvency fund as much as possible
+        let reserve_allocation = min(offer.reserve_allocation, returned_tokens);
+        available_reserve += reserve_allocation;
+        returned_tokens -= reserve_allocation;
+
+        // Finally see what we can take as a fee. Consume whatever's left, in the case this is a big profit
+
+        // Calculate the protocol revenue
+        let fee_amount = returned_tokens.mul(protocol_fee);
+        // And what's left to be allocated as a reserve
+        let fee_reserve = returned_tokens.sub(fee_amount);
+
+        available_reserve += fee_reserve;
+
+        RESERVES.save(deps.storage, &available_reserve)?;
+
+        Ok((debt_amount, fee_amount))
     }
 
     fn interest_amount(&self, amount: Uint128, rate: Decimal) -> Uint128 {

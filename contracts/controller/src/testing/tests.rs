@@ -95,7 +95,7 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
             app.api().addr_make("instantiator"),
             &unstake::controller::InstantiateMsg {
                 owner: app.api().addr_make("owner"),
-                protocol_fee: Decimal::zero(),
+                protocol_fee: Decimal::from_str("0.25").unwrap(),
                 delegate_code_id,
                 vault_address: vault_address.clone(),
                 ask_denom: Denom::from("base"),
@@ -457,7 +457,8 @@ fn close_offer() {
     // So we'll pay 3.8356 on 10326 = 396,
     // but have an allocated fee of 3.8356 on the total value = 10737 * 3.8356 = 411
     // so we have an excess profit here of 411 - 396 = 15
-    assert_eq!(controller_balances, coins(20014u128, "quote"));
+    // of that profit, 25% is protocol_fee, so 3
+    assert_eq!(controller_balances, coins(20011u128, "quote"));
 
     // delegate should now be empty
     assert_eq!(delegate_balances, vec![]);

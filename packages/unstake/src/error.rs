@@ -1,4 +1,4 @@
-use cosmwasm_std::{Instantiate2AddressError, OverflowError, StdError};
+use cosmwasm_std::{Instantiate2AddressError, OverflowError, StdError, Uint128};
 use cw_utils::PaymentError;
 use thiserror::Error;
 
@@ -27,4 +27,7 @@ pub enum ContractError {
 
     #[error("Instantiate2Address {0}")]
     Instantiate2Address(#[from] Instantiate2AddressError),
+
+    #[error("Insolvent {debt_remaining} remaining")]
+    Insolvent { debt_remaining: Uint128 },
 }
