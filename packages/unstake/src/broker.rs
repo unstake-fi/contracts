@@ -1,15 +1,12 @@
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{CustomQuery, Decimal, Deps, DepsMut, StdResult, Storage, Uint128};
+use cw_storage_plus::Item;
 use std::{
     cmp::{max, min},
     ops::{Add, Div, Mul, Sub},
 };
 
-use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{
-    Addr, CustomQuery, Decimal, Deps, DepsMut, QuerierWrapper, StdResult, Storage, Uint128,
-};
-use cw_storage_plus::Item;
-
-use crate::{adapter::Adapter, controller::InstantiateMsg, ContractError};
+use crate::{adapter::Adapter, controller::InstantiateMsg, rates::Rates, ContractError};
 
 static BROKER: Item<Broker> = Item::new("broker");
 
@@ -21,7 +18,6 @@ static YEAR_SECONDS: u128 = 365 * 24 * 60 * 60;
 /// The Broker is responsible for managing protocol reserves, and making Unstaking offers
 #[cw_serde]
 pub struct Broker {
-    pub vault: Addr,
     /// The minimum rate that the Broker will offer. Typically this should be set to the utilization target
     /// of the GHOST vault, or maybe slightly above. Any Unstakes that have a net interest of less than this
     /// will contribute to protocol reserves
@@ -34,7 +30,6 @@ pub struct Broker {
 impl From<InstantiateMsg> for Broker {
     fn from(value: InstantiateMsg) -> Self {
         Self {
-            vault: value.vault_address,
             min_rate: value.min_rate,
             duration: value.unbonding_duration,
         }
@@ -56,15 +51,7 @@ impl Broker {
         RESERVES.save(storage, &reserves)
     }
 
-    pub fn update(
-        &mut self,
-        vault: Option<Addr>,
-        min_rate: Option<Decimal>,
-        duration: Option<u64>,
-    ) {
-        if let Some(vault) = vault {
-            self.vault = vault
-        }
+    pub fn update(&mut self, min_rate: Option<Decimal>, duration: Option<u64>) {
         if let Some(min_rate) = min_rate {
             self.min_rate = min_rate
         }
@@ -78,14 +65,15 @@ impl Broker {
     pub fn offer<T: CustomQuery>(
         &self,
         deps: Deps<T>,
+        rates: &Rates,
         adapter: &Adapter,
         unbond_amount: Uint128,
     ) -> Result<Offer, ContractError> {
         let redemption_rate = match adapter {
             Adapter::Contract(c) => c.redemption_rate(deps.querier)?,
         };
-        let current_rate = self.fetch_current_interest_rate(deps.querier)?;
-        let max_rate = self.fetch_max_interest_rate(deps.querier)?;
+        let current_rate = rates.interest;
+        let max_rate = rates.max_interest;
 
         // Calculate the value of the Unstaked amount, in terms of the underlying asset. I.e. the max amount we'll need to borrow
         let value = unbond_amount.mul(redemption_rate);
@@ -150,12 +138,13 @@ impl Broker {
     pub fn close_offer<T: CustomQuery>(
         &self,
         deps: DepsMut<T>,
+        rates: &Rates,
         offer: &Offer,
         debt_tokens: Uint128,
         returned_tokens: Uint128,
         protocol_fee: Decimal,
     ) -> Result<(Uint128, Uint128), ContractError> {
-        let debt_rate = self.fetch_debt_rate(deps.querier)?;
+        let debt_rate = rates.debt;
         let debt_amount = debt_tokens.mul_ceil(debt_rate);
         let mut returned_tokens = returned_tokens;
         let mut available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
@@ -200,38 +189,6 @@ impl Broker {
             .mul(rate)
             .mul(Uint128::from(self.duration))
             .div(Uint128::from(YEAR_SECONDS))
-    }
-
-    fn fetch_debt_rate<T: CustomQuery>(&self, query: QuerierWrapper<T>) -> StdResult<Decimal> {
-        let status: kujira_ghost::receipt_vault::StatusResponse = query.query_wasm_smart(
-            self.vault.to_string(),
-            &kujira_ghost::receipt_vault::QueryMsg::Status {},
-        )?;
-
-        Ok(status.debt_share_ratio)
-    }
-
-    fn fetch_current_interest_rate<T: CustomQuery>(
-        &self,
-        query: QuerierWrapper<T>,
-    ) -> StdResult<Decimal> {
-        let status: kujira_ghost::receipt_vault::StatusResponse = query.query_wasm_smart(
-            self.vault.to_string(),
-            &kujira_ghost::receipt_vault::QueryMsg::Status {},
-        )?;
-
-        Ok(status.rate)
-    }
-    fn fetch_max_interest_rate<T: CustomQuery>(
-        &self,
-        _query: QuerierWrapper<T>,
-    ) -> StdResult<Decimal> {
-        // TODO: Publish & use new interest rate params
-        // let rates: kujira_ghost::receipt_vault::InterestParamsResponse = query.query_wasm_smart(
-        //     self.vault.to_string(),
-        //     &kujira_ghost::receipt_vault::QueryMsg::InterestParams {},
-        // )?;
-        Ok(Decimal::from_ratio(3u128, 1u128))
     }
 }
 

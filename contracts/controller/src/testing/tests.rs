@@ -259,7 +259,6 @@ fn quote_min_rate_clamped() {
         app.api().addr_make("owner"),
         contracts.controller.clone(),
         &ExecuteMsg::UpdateBroker {
-            vault: None,
             min_rate: Some(Decimal::from_str("1.1").unwrap()),
             duration: None,
         },

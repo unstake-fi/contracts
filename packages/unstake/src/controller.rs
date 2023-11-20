@@ -58,7 +58,6 @@ pub enum ExecuteMsg {
 
     /// Update the Broker config
     UpdateBroker {
-        vault: Option<Addr>,
         min_rate: Option<Decimal>,
         duration: Option<u64>,
     },
