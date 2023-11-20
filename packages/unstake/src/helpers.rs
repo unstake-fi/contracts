@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{
     instantiate2_address, to_json_binary, Addr, Binary, CodeInfoResponse, Coin, CosmosMsg,
-    CustomQuery, Deps, Env, StdResult, WasmMsg,
+    CustomQuery, Deps, Env, WasmMsg,
 };
 
 use crate::ContractError;
@@ -59,13 +59,13 @@ pub fn predict_address<T: CustomQuery>(
     label: &String,
     deps: &Deps<T>,
     env: &Env,
-) -> StdResult<(Addr, Binary)> {
+) -> Result<(Addr, Binary), ContractError> {
     let CodeInfoResponse { checksum, .. } = deps.querier.query_wasm_code_info(code_id)?;
     let salt = Binary::from(label.as_bytes().chunks(64).next().unwrap());
     let creator = deps.api.addr_canonicalize(env.contract.address.as_str())?;
     let contract_addr = deps
         .api
-        .addr_humanize(&instantiate2_address(&checksum, &creator, &salt).unwrap())?;
+        .addr_humanize(&instantiate2_address(&checksum, &creator, &salt)?)?;
 
     Ok((contract_addr, salt))
 }

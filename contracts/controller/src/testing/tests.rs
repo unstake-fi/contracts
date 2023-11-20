@@ -1,13 +1,16 @@
 use std::str::FromStr;
 
-use cosmwasm_std::{coins, to_json_binary, Addr, Coin, Decimal, Uint128};
+use cosmwasm_std::{coin, coins, to_json_binary, Addr, Coin, Decimal, Uint128};
 use cw_multi_test::{ContractWrapper, Executor};
 use kujira::{Denom, HumanPrice};
 use kujira_ghost::common::OracleType;
-use kujira_rs_testing::mock::{mock_app, CustomApp};
+use kujira_rs_testing::{
+    api::MockApiBech32,
+    mock::{mock_app, CustomApp},
+};
 use unstake::{
     adapter::Contract,
-    controller::{ExecuteMsg, OfferResponse, QueryMsg},
+    controller::{DelegatesResponse, ExecuteMsg, OfferResponse, QueryMsg},
 };
 
 struct Contracts {
@@ -18,6 +21,7 @@ struct Contracts {
 
 fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
     let mut app = mock_app(balances);
+
     let delegate_code = ContractWrapper::new(
         unstake_delegate::contract::execute,
         unstake_delegate::contract::instantiate,
@@ -48,9 +52,9 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
     let vault_address = app
         .instantiate_contract(
             ghost_code_id,
-            Addr::unchecked("ghost"),
+            app.api().addr_make("ghost"),
             &kujira_ghost::receipt_vault::InstantiateMsg {
-                owner: Addr::unchecked("ghost-owner"),
+                owner: app.api().addr_make("ghost-owner"),
                 denom: Denom::from("quote"),
                 oracle: OracleType::Static(HumanPrice::from(Decimal::one())),
                 decimals: 6,
@@ -68,7 +72,7 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
     let provider_address = app
         .instantiate_contract(
             provider_code_id,
-            Addr::unchecked("provider"),
+            app.api().addr_make("provider"),
             &(),
             &vec![],
             "provider",
@@ -88,9 +92,9 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
     let controller_address = app
         .instantiate_contract(
             controller_code_id,
-            Addr::unchecked("instantiator"),
+            app.api().addr_make("instantiator"),
             &unstake::controller::InstantiateMsg {
-                owner: Addr::unchecked("owner"),
+                owner: app.api().addr_make("owner"),
                 protocol_fee: Decimal::zero(),
                 delegate_code_id,
                 vault_address: vault_address.clone(),
@@ -120,6 +124,10 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
             controller: controller_address,
         },
     )
+}
+
+fn query_balances(app: &CustomApp, address: Addr) -> Vec<Coin> {
+    app.wrap().query_all_balances(address).unwrap()
 }
 
 #[test]
@@ -248,7 +256,7 @@ fn quote_min_rate_clamped() {
     .unwrap();
 
     app.execute_contract(
-        Addr::unchecked("owner"),
+        app.api().addr_make("owner"),
         contracts.controller.clone(),
         &ExecuteMsg::UpdateBroker {
             vault: None,
@@ -283,4 +291,83 @@ fn quote_min_rate_clamped() {
     // Offer amount 10737 - 452 = 10,285
     assert_eq!(quote.amount, Uint128::from(10285u128));
     assert_eq!(quote.fee, Uint128::from(452u128));
+}
+
+#[test]
+fn execute_offer() {
+    // Quote where we have plenty of reserves, and the minimum rate is highter than the current rate
+    let api = MockApiBech32::new("kujira");
+    let balances = vec![
+        (api.addr_make("funder"), coins(100000000u128, "quote")),
+        (api.addr_make("unstaker"), coins(10000u128, "base")),
+        (api.addr_make("lender"), coins(100000000u128, "quote")),
+    ];
+    let (mut app, contracts) = setup(balances);
+
+    app.execute_contract(
+        api.addr_make("funder"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Fund {},
+        &coins(20000u128, "quote"),
+    )
+    .unwrap();
+
+    app.execute_contract(
+        api.addr_make("lender"),
+        contracts.ghost.clone(),
+        &kujira_ghost::receipt_vault::ExecuteMsg::Deposit(
+            kujira_ghost::receipt_vault::DepositMsg { callback: None },
+        ),
+        &coins(100000000u128, "quote"),
+    )
+    .unwrap();
+
+    let amount = Uint128::from(10000u128);
+
+    app.execute_contract(
+        api.addr_make("unstaker"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Unstake { max_fee: amount },
+        &coins(10000u128, "base"),
+    )
+    .unwrap();
+
+    let delegates: DelegatesResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Delegates {})
+        .unwrap();
+    assert_eq!(delegates.delegates.len(), 1);
+    let (delegate, _) = delegates.delegates[0].clone();
+
+    let unstaker_balances = query_balances(&app, api.addr_make("unstaker"));
+    let controller_balances = query_balances(&app, contracts.controller);
+    let delegate_balances = query_balances(&app, delegate);
+    let provider_balances = query_balances(&app, contracts.provider);
+    let ghost_balances = query_balances(&app, contracts.ghost.clone());
+
+    // 10000 unstaked
+    // 10326 returned to user
+    // 411 in fees
+    // reserve allocation (823) must be sent to delegate
+    // debt_rate 1.12
+    // debt_tokens 11566
+    // ghots depost 100000000 - 10326 = 99989674
+
+    // unstaker gets their money, less the fees
+    assert_eq!(unstaker_balances, coins(10326u128, "quote"));
+    // remainder of reserve left on controller
+    assert_eq!(controller_balances, coins(19177u128, "quote"));
+    // delegate has the debt tokens, and reserve allocation
+    assert_eq!(
+        delegate_balances,
+        vec![
+            coin(9220u128, format!("factory/{}/udebt", contracts.ghost)),
+            coin(823u128, "quote")
+        ]
+    );
+    // Provider should have received the base for unbonding
+    assert_eq!(provider_balances, coins(10000u128, "base"));
+
+    // And ghost should have the borrowed amount deducted
+    assert_eq!(ghost_balances, coins(100000000u128 - 10326u128, "quote"));
 }

@@ -79,7 +79,7 @@ impl Broker {
         &self,
         deps: Deps<T>,
         adapter: &Adapter,
-        amount: Uint128,
+        unbond_amount: Uint128,
     ) -> Result<Offer, ContractError> {
         let redemption_rate = match adapter {
             Adapter::Contract(c) => c.redemption_rate(deps.querier)?,
@@ -88,7 +88,7 @@ impl Broker {
         let max_rate = self.fetch_max_interest_rate(deps.querier)?;
 
         // Calculate the value of the Unstaked amount, in terms of the underlying asset. I.e. the max amount we'll need to borrow
-        let value = amount.mul(redemption_rate);
+        let value = unbond_amount.mul(redemption_rate);
 
         // For now we'll naively assume that the borrow rate will stay fixed for the duration of the unbond.
         // During periods of high interest, Unstakes will cost more and a user will have to wait for the rate

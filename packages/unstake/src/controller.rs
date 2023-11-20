@@ -1,6 +1,6 @@
 use crate::{adapter::Adapter, broker::Offer};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Decimal, Timestamp, Uint128};
+use cosmwasm_std::{Addr, Coin, Decimal, Timestamp, Uint128};
 use kujira::Denom;
 
 #[cw_serde]
@@ -37,6 +37,7 @@ pub enum ExecuteMsg {
     /// and the received Ask tokens from the user
     UnstakeCallback {
         offer: Offer,
+        unbond_amount: Coin,
     },
 
     /// Called by a delegate contract when the unbonding process is complete.

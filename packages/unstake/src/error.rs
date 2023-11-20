@@ -1,4 +1,4 @@
-use cosmwasm_std::{OverflowError, StdError};
+use cosmwasm_std::{Instantiate2AddressError, OverflowError, StdError};
 use cw_utils::PaymentError;
 use thiserror::Error;
 
@@ -21,4 +21,7 @@ pub enum ContractError {
 
     #[error("MaxFeeExceeded")]
     MaxFeeExceeded {},
+
+    #[error("Instantiate2Address {0}")]
+    Instantiate2Address(#[from] Instantiate2AddressError),
 }

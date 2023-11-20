@@ -28,11 +28,11 @@ impl Contract {
         Ok(state.exchange_rate)
     }
 
-    pub fn unbond_start<T>(&self, funds: Vec<Coin>) -> CosmosMsg<T> {
+    pub fn unbond_start<T>(&self, funds: Coin) -> CosmosMsg<T> {
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: self.address.to_string(),
             msg: self.unbond_start_msg.clone(),
-            funds,
+            funds: vec![funds],
         })
     }
 

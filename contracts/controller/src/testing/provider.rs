@@ -28,9 +28,12 @@ pub fn execute(
     _deps: DepsMut<KujiraQuery>,
     _env: Env,
     _info: MessageInfo,
-    _msg: ExecuteMsg,
+    msg: ExecuteMsg,
 ) -> Result<Response<KujiraMsg>, ContractError> {
-    todo!()
+    match msg {
+        ExecuteMsg::WithdrawUnbonded {} => Ok(Response::default()),
+        ExecuteMsg::QueueUnbond {} => Ok(Response::default()),
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

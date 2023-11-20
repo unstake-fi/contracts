@@ -1,8 +1,10 @@
+use std::ops::AddAssign;
+
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure_eq, to_json_binary, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Order, Response, StdResult, Timestamp, Uint128, WasmMsg,
+    coin, ensure_eq, to_json_binary, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Env,
+    MessageInfo, Order, Response, StdResult, Timestamp, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
@@ -54,23 +56,42 @@ pub fn execute(
             broker.accept_offer(deps, &offer)?;
             let send_msg = config.offer_denom.send(&info.sender, &offer.amount);
             let borrow_msg = vault_borrow_msg(&config.vault_address, offer.amount)?;
-            let callback_msg = Controller(env.contract.address)
-                .call(ExecuteMsg::UnstakeCallback { offer }, vec![])?;
+            let callback_msg = Controller(env.contract.address).call(
+                ExecuteMsg::UnstakeCallback {
+                    unbond_amount: config.ask_denom.coin(&amount),
+                    offer,
+                },
+                vec![],
+            )?;
 
             Ok(Response::default()
                 .add_message(send_msg)
                 .add_message(borrow_msg)
                 .add_message(callback_msg))
         }
-        ExecuteMsg::UnstakeCallback { offer } => {
+        ExecuteMsg::UnstakeCallback {
+            unbond_amount,
+            offer,
+        } => {
             ensure_eq!(
                 info.sender,
                 env.contract.address,
                 ContractError::Unauthorized {}
             );
-            let funds = deps
+            // TODO: we have the reserve on this account. don't send the whole lot. Just what is allocated by the Broker
+            let balances = deps
                 .querier
                 .query_all_balances(env.contract.address.clone())?;
+
+            let mut funds = NativeBalance(vec![]);
+
+            for Coin { denom, amount } in balances {
+                if denom == config.offer_denom.to_string() {
+                    funds.add_assign(coin(offer.reserve_allocation.u128(), denom))
+                } else {
+                    funds.add_assign(coin(amount.u128(), denom))
+                }
+            }
 
             let label: String = format!(
                 "Unstake.fi delegate {}/{}",
@@ -85,6 +106,7 @@ pub fn execute(
                 predict_address(config.delegate_code_id, &label, &deps.as_ref(), &env)?;
 
             let msg = unstake::delegate::InstantiateMsg {
+                unbond_amount,
                 controller: env.contract.address.clone(),
                 offer: offer.clone(),
                 adapter: config.adapter,
@@ -95,7 +117,7 @@ pub fn execute(
                 code_id: config.delegate_code_id,
                 label,
                 msg: to_json_binary(&msg)?,
-                funds,
+                funds: funds.into_vec(),
                 salt,
             };
 

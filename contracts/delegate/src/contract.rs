@@ -16,17 +16,16 @@ static ADAPTER: Item<Adapter> = Item::new("adapter");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut<KujiraQuery>,
-    env: Env,
+    _env: Env,
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response<KujiraMsg>, ContractError> {
     CONTROLLER.save(deps.storage, &msg.controller)?;
     OFFER.save(deps.storage, &msg.offer)?;
     ADAPTER.save(deps.storage, &msg.adapter)?;
-    let funds = deps.querier.query_all_balances(env.contract.address)?;
     match msg.adapter {
         Adapter::Contract(c) => {
-            let unbond_msg = c.unbond_start(funds);
+            let unbond_msg = c.unbond_start(msg.unbond_amount);
             Ok(Response::default().add_message(unbond_msg))
         }
     }
