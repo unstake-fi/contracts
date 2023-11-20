@@ -78,7 +78,6 @@ pub fn execute(
                 env.contract.address,
                 ContractError::Unauthorized {}
             );
-            // TODO: we have the reserve on this account. don't send the whole lot. Just what is allocated by the Broker
             let balances = deps
                 .querier
                 .query_all_balances(env.contract.address.clone())?;
