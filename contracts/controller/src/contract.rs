@@ -235,6 +235,6 @@ pub fn amount(denom: &Denom, funds: Vec<Coin>) -> StdResult<Uint128> {
         .find(|d| &Denom::from(d.denom.clone()) == denom);
     match coin {
         None => Err(StdError::not_found(denom.to_string())),
-        Some(Coin { amount, .. }) => Ok(amount.clone()),
+        Some(Coin { amount, .. }) => Ok(*amount),
     }
 }
