@@ -43,7 +43,7 @@ impl From<InstantiateMsg> for Broker {
 
 impl Broker {
     pub fn save(&self, storage: &mut dyn Storage) -> StdResult<()> {
-        BROKER.save(storage, &self)
+        BROKER.save(storage, self)
     }
 
     pub fn load(storage: &dyn Storage) -> StdResult<Self> {

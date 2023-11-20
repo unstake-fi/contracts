@@ -168,7 +168,7 @@ pub fn execute(
             Ok(Response::default().add_messages(msgs))
         }
         ExecuteMsg::Fund {} => {
-            let amount = must_pay(&info, &config.offer_denom.to_string())?;
+            let amount = must_pay(&info, config.offer_denom.as_ref())?;
             Broker::fund_reserves(deps.storage, amount)?;
             Ok(Response::default())
         }
