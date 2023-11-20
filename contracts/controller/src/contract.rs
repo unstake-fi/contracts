@@ -28,8 +28,10 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response<KujiraMsg>, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    let config = Config::from(msg);
-    config.save(deps)?;
+    let config = Config::from(msg.clone());
+    config.save(deps.storage)?;
+    let broker = Broker::from(msg);
+    broker.save(deps.storage)?;
     Ok(Response::default())
 }
 

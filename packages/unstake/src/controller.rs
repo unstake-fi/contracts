@@ -9,11 +9,18 @@ pub struct InstantiateMsg {
     pub protocol_fee: Decimal,
     pub delegate_code_id: u64,
     pub vault_address: Addr,
+
     /// The ask denom of the Broker - ie the LST/receipt token
     pub ask_denom: Denom,
 
     /// The offer denom of the Broker - ie the underlying bonded token
     pub offer_denom: Denom,
+
+    /// The amount of time in seconds that an unbonding takes
+    pub unbonding_duration: u64,
+
+    /// The minimum offer rate set on the broker
+    pub min_rate: Decimal,
 
     /// The adapter for the unbonding process
     pub adapter: Adapter,

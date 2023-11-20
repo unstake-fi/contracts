@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use cosmwasm_std::{to_json_binary, Addr, Decimal, Uint128};
 use cw_multi_test::{ContractWrapper, Executor};
 use kujira::{Denom, HumanPrice};
@@ -97,6 +99,10 @@ fn setup() -> Contracts {
                     unbond_start_msg,
                     unbond_end_msg,
                 }),
+                // 2 weeks
+                unbonding_duration: 2 * 7 * 24 * 60 * 60,
+                // 3%
+                min_rate: Decimal::from_str("0.03").unwrap(),
             },
             &vec![],
             "controller",
@@ -113,4 +119,10 @@ fn setup() -> Contracts {
 #[test]
 fn instantiate() {
     setup();
+}
+
+#[test]
+fn quote_initial() {
+    // Check that when the contract is new, and there is no reserve fund, the quoted rate uses the max rate from the vault
+    let contracts = setup();
 }

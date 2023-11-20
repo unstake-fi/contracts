@@ -1,7 +1,9 @@
+use std::str::FromStr;
+
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response};
 use kujira::{KujiraMsg, KujiraQuery};
 use unstake::ContractError;
 
@@ -35,7 +37,13 @@ pub fn execute(
 pub fn query(
     _deps: Deps<KujiraQuery>,
     _env: Env,
-    _msg: unstake::adapter::ContractQueryMsg,
+    msg: unstake::adapter::ContractQueryMsg,
 ) -> Result<Binary, ContractError> {
-    todo!()
+    match msg {
+        unstake::adapter::ContractQueryMsg::State {} => {
+            Ok(to_json_binary(&unstake::adapter::ContractStateResponse {
+                exchange_rate: Decimal::from_str("1.07375")?,
+            })?)
+        }
+    }
 }

@@ -1,14 +1,15 @@
 use std::{
     cmp::max,
     ops::{Div, Mul, Sub},
-    time::Duration,
 };
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, CustomQuery, Decimal, Deps, DepsMut, QuerierWrapper, StdResult, Uint128};
+use cosmwasm_std::{
+    Addr, CustomQuery, Decimal, Deps, DepsMut, QuerierWrapper, StdResult, Storage, Uint128,
+};
 use cw_storage_plus::Item;
 
-use crate::{adapter::Adapter, ContractError};
+use crate::{adapter::Adapter, controller::InstantiateMsg, ContractError};
 
 static BROKER: Item<Broker> = Item::new("broker");
 
@@ -26,11 +27,25 @@ pub struct Broker {
     /// will contribute to protocol reserves
     pub min_rate: Decimal,
 
-    /// The length of time that an unbonding request must wait
-    pub duration: Duration,
+    /// The length of time in seconds that an unbonding request must wait
+    pub duration: u64,
+}
+
+impl From<InstantiateMsg> for Broker {
+    fn from(value: InstantiateMsg) -> Self {
+        Self {
+            vault: value.vault_address,
+            min_rate: value.min_rate,
+            duration: value.unbonding_duration,
+        }
+    }
 }
 
 impl Broker {
+    pub fn save(&self, storage: &mut dyn Storage) -> StdResult<()> {
+        BROKER.save(storage, &self)
+    }
+
     pub fn load<T: CustomQuery>(deps: Deps<T>) -> StdResult<Self> {
         BROKER.load(deps.storage)
     }
@@ -131,7 +146,7 @@ impl Broker {
     fn interest_amount(&self, amount: Uint128, rate: Decimal) -> Uint128 {
         amount
             .mul(rate)
-            .mul(Uint128::from(self.duration.as_secs()))
+            .mul(Uint128::from(self.duration))
             .div(Uint128::from(YEAR_SECONDS))
     }
 
