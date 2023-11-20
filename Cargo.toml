@@ -15,7 +15,7 @@ overflow-checks = true
 [workspace.dependencies]
 cosmwasm-schema = "1.5.0"
 cosmwasm-std = { version = "1.5.0", features = [
-  "cosmwasm_1_3",
+  "cosmwasm_1_2",
   # Enable this if you only deploy to chains that have CosmWasm 1.4 or higher
   # "cosmwasm_1_4",
 ] }
