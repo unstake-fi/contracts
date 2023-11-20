@@ -46,14 +46,32 @@ impl Broker {
         BROKER.save(storage, &self)
     }
 
-    pub fn load<T: CustomQuery>(deps: Deps<T>) -> StdResult<Self> {
-        BROKER.load(deps.storage)
+    pub fn load(storage: &dyn Storage) -> StdResult<Self> {
+        BROKER.load(storage)
     }
 
     pub fn fund_reserves(storage: &mut dyn Storage, amount: Uint128) -> StdResult<()> {
         let mut reserves = RESERVES.load(storage).unwrap_or_default();
         reserves += amount;
         RESERVES.save(storage, &reserves)
+    }
+
+    pub fn update(
+        &mut self,
+        vault: Option<Addr>,
+        min_rate: Option<Decimal>,
+        duration: Option<u64>,
+    ) {
+        if let Some(vault) = vault {
+            self.vault = vault
+        }
+        if let Some(min_rate) = min_rate {
+            self.min_rate = min_rate
+        }
+
+        if let Some(duration) = duration {
+            self.duration = duration
+        }
     }
 
     /// Make an offer for a givan `amount` of the staked token

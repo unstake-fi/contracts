@@ -47,6 +47,13 @@ pub enum ExecuteMsg {
 
     /// Adds funds to the reserve
     Fund {},
+
+    /// Update the Broker config
+    UpdateBroker {
+        vault: Option<Addr>,
+        min_rate: Option<Decimal>,
+        duration: Option<u64>,
+    },
 }
 
 #[cw_serde]
