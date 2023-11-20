@@ -141,6 +141,7 @@ fn quote_initial() {
         )
         .unwrap();
     // Mock redemption rate of 1.07375
+    // current interest rate: 100%
     // Max interest rate of 300%
     // Default 2 week unbonding
 
@@ -148,9 +149,10 @@ fn quote_initial() {
     // 1,209,600 in 2 weeks
     // 0.03835616438 of the max interest rate
     // 0.1150684931 interest
-    // List price 9,313
-    // Interest amount 1,071
-    // Offer amount 9,313 - 1,071 = 8,242
-    assert_eq!(quote.amount, Uint128::from(8242u128));
-    assert_eq!(quote.fee, Uint128::from(1071u128));
+    // List price 10737
+    // Interest amount 1234
+    // Offer amount 10737 - 1234 = 9,503
+    println!("{:#?}", quote);
+    assert_eq!(quote.amount, Uint128::from(9503u128));
+    assert_eq!(quote.fee, Uint128::from(1234u128));
 }

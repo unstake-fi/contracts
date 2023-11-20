@@ -1,6 +1,6 @@
 use std::{
     cmp::max,
-    ops::{Div, Mul, Sub},
+    ops::{Add, Div, Mul, Sub},
 };
 
 use cosmwasm_schema::cw_serde;
@@ -77,24 +77,36 @@ impl Broker {
         // Ensure we have enough reserves available to cover the max potential shortfall - ie the lend APR spiking to max
         // in the following block, and remaining there for the whole period
         // This is something that we can look to relax in due course, but for now it provides an absolute guarantee of solvency
-        let reserve_allocation = self.interest_amount(value, max_rate_shortfall);
+        let reserve_requirement = self.interest_amount(value, max_rate_shortfall);
         let available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
-
-        if reserve_allocation.gt(&available_reserve) {
-            return Err(ContractError::InsufficentReserves {});
-        };
 
         // Calculate the total that we'll charge in up-front interest
         let fee = self.interest_amount(value, offer_rate);
 
-        // The actual offer amount, and therefore the amount that we borrow from GHOST, is less then the `value` that we
-        // calculated the total interest amount on. The larger the current_rate, the larger the fee, the less we're actually
-        // borrowing, so the actual amount of interest paid will be lower.
-        // Therefore when the unbonded tokens return, we will have a surplus after the debt has been repaid.
+        // We have enough reserve to offer at the clamped offer_rate
+        if available_reserve.gt(&reserve_requirement) {
+            // The actual offer amount, and therefore the amount that we borrow from GHOST, is less then the `value` that we
+            // calculated the total interest amount on. The larger the current_rate, the larger the fee, the less we're actually
+            // borrowing, so the actual amount of interest paid will be lower.
+            // Therefore when the unbonded tokens return, we will have a surplus after the debt has been repaid.
+            let offer = Offer {
+                amount: value.sub(fee),
+                reserve_allocation: reserve_requirement,
+                fee,
+            };
+
+            return Ok(offer);
+        }
+
+        // We can't offer at the current rate, calculate the best rate we can offer given the reserves available
+        // Consume the whole reserve, and make a best offer
+        let reserve_allocation = available_reserve;
+        // Allocate the shortfall to fee, deduct from the amount returned
+        let reserve_shortfall = reserve_requirement.sub(available_reserve);
         let offer = Offer {
-            amount: value.sub(fee),
+            amount: value.sub(fee).sub(reserve_shortfall),
             reserve_allocation,
-            fee,
+            fee: fee.add(reserve_shortfall),
         };
 
         Ok(offer)
