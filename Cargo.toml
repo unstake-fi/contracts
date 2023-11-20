@@ -29,4 +29,3 @@ serde = { version = "1.0.189", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.49" }
 cw-multi-test = "0.18"
 unstake = { path = "./packages/unstake" }
-kujira-rs-testing = { git = "https://github.com/team-kujira/kujira-rs-testing#769dfd734479b140b7d2345bd7b707ce1700cae9" }

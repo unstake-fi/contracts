@@ -551,7 +551,7 @@ dependencies = [
 [[package]]
 name = "kujira-rs-testing"
 version = "1.1.0"
-source = "git+https://github.com/team-kujira/kujira-rs-testing#769dfd734479b140b7d2345bd7b707ce1700cae9#769dfd734479b140b7d2345bd7b707ce1700cae9"
+source = "git+https://github.com/team-kujira/kujira-rs-testing?rev=0166e7d5f0c56a89a9ca8d17ffa0a0428cb87649#0166e7d5f0c56a89a9ca8d17ffa0a0428cb87649"
 dependencies = [
  "anyhow",
  "base64 0.20.0",
@@ -941,7 +941,6 @@ version = "0.1.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-multi-test",
  "cw-storage-plus",
  "cw-utils",
  "kujira",
