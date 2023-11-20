@@ -50,6 +50,12 @@ impl Broker {
         BROKER.load(deps.storage)
     }
 
+    pub fn fund_reserves(storage: &mut dyn Storage, amount: Uint128) -> StdResult<()> {
+        let mut reserves = RESERVES.load(storage).unwrap_or_default();
+        reserves += amount;
+        RESERVES.save(storage, &reserves)
+    }
+
     /// Make an offer for a givan `amount` of the staked token
     pub fn offer<T: CustomQuery>(
         &self,

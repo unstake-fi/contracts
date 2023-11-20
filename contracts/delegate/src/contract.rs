@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{ensure_eq, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{ensure_eq, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw_storage_plus::Item;
 use kujira::{KujiraMsg, KujiraQuery};
 use unstake::adapter::Adapter;

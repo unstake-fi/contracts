@@ -44,6 +44,9 @@ pub enum ExecuteMsg {
     Complete {
         offer: Offer,
     },
+
+    /// Adds funds to the reserve
+    Fund {},
 }
 
 #[cw_serde]

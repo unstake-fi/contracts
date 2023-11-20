@@ -1,13 +1,13 @@
 use std::str::FromStr;
 
-use cosmwasm_std::{to_json_binary, Addr, Decimal, Uint128};
+use cosmwasm_std::{coins, to_json_binary, Addr, Coin, Decimal, Uint128};
 use cw_multi_test::{ContractWrapper, Executor};
 use kujira::{Denom, HumanPrice};
 use kujira_ghost::common::OracleType;
 use kujira_rs_testing::mock::{mock_app, CustomApp};
 use unstake::{
     adapter::Contract,
-    controller::{OfferResponse, QueryMsg},
+    controller::{ExecuteMsg, OfferResponse, QueryMsg},
 };
 
 struct Contracts {
@@ -16,8 +16,8 @@ struct Contracts {
     pub controller: Addr,
 }
 
-fn setup() -> (CustomApp, Contracts) {
-    let mut app = mock_app(vec![]);
+fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
+    let mut app = mock_app(balances);
     let delegate_code = ContractWrapper::new(
         unstake_delegate::contract::execute,
         unstake_delegate::contract::instantiate,
@@ -94,8 +94,8 @@ fn setup() -> (CustomApp, Contracts) {
                 protocol_fee: Decimal::zero(),
                 delegate_code_id,
                 vault_address: vault_address.clone(),
-                ask_denom: Denom::from("quote"),
-                offer_denom: Denom::from("base"),
+                ask_denom: Denom::from("base"),
+                offer_denom: Denom::from("quote"),
                 adapter: unstake::adapter::Adapter::Contract(Contract {
                     address: provider_address.clone(),
                     redemption_rate_query,
@@ -124,13 +124,13 @@ fn setup() -> (CustomApp, Contracts) {
 
 #[test]
 fn instantiate() {
-    setup();
+    setup(vec![]);
 }
 
 #[test]
 fn quote_initial() {
     // Check that when the contract is new, and there is no reserve fund, the quoted rate uses the max rate from the vault
-    let (app, contracts) = setup();
+    let (app, contracts) = setup(vec![]);
     let quote: OfferResponse = app
         .wrap()
         .query_wasm_smart(
@@ -152,7 +152,46 @@ fn quote_initial() {
     // List price 10737
     // Interest amount 1234
     // Offer amount 10737 - 1234 = 9,503
-    println!("{:#?}", quote);
     assert_eq!(quote.amount, Uint128::from(9503u128));
     assert_eq!(quote.fee, Uint128::from(1234u128));
+}
+
+#[test]
+fn quote_reserve_clamped() {
+    // Same as above, but with a small amount of reserve allocated that will be entirely consumed
+    let balances = vec![(Addr::unchecked("funder"), coins(100000000u128, "quote"))];
+    let (mut app, contracts) = setup(balances);
+    app.execute_contract(
+        Addr::unchecked("funder"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Fund {},
+        &coins(200u128, "quote"),
+    )
+    .unwrap();
+
+    let quote: OfferResponse = app
+        .wrap()
+        .query_wasm_smart(
+            contracts.controller,
+            &QueryMsg::Offer {
+                amount: Uint128::from(10000u128),
+            },
+        )
+        .unwrap();
+
+    // Mock redemption rate of 1.07375
+    // current interest rate: 100%
+    // Max interest rate of 300%
+    // Default 2 week unbonding
+
+    // 31,536,000 seconds in a year
+    // 1,209,600 in 2 weeks
+    // 0.03835616438 of the max interest rate
+    // 0.1150684931 interest
+    // List price 10737
+    // Interest amount 1234
+    // Available reserve = 200
+    // Offer amount 10737 - 1034 = 9,703
+    assert_eq!(quote.amount, Uint128::from(9703u128));
+    assert_eq!(quote.fee, Uint128::from(1034u128));
 }
