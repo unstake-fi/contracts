@@ -542,3 +542,97 @@ fn close_early_offer() {
     )
     .unwrap_err();
 }
+
+#[test]
+fn close_losing_offer() {
+    // Now let's finally test a loss-making completion
+    // Instead of updating the ghost rate, we will just make it complete the unbonding a week too late
+    let api = MockApiBech32::new("kujira");
+    let balances = vec![
+        (api.addr_make("funder"), coins(100000000u128, "quote")),
+        (api.addr_make("unstaker"), coins(10000u128, "base")),
+        (api.addr_make("lender"), coins(100000000u128, "quote")),
+    ];
+    let (mut app, contracts) = setup(balances);
+
+    app.execute_contract(
+        api.addr_make("funder"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Fund {},
+        &coins(20000u128, "quote"),
+    )
+    .unwrap();
+
+    // Make sure that the provider has enough tokens to return once unbonding is complete
+    app.send_tokens(
+        api.addr_make("funder"),
+        contracts.provider.clone(),
+        &coins(500000u128, "quote"),
+    )
+    .unwrap();
+
+    app.execute_contract(
+        api.addr_make("lender"),
+        contracts.ghost.clone(),
+        &kujira_ghost::receipt_vault::ExecuteMsg::Deposit(
+            kujira_ghost::receipt_vault::DepositMsg { callback: None },
+        ),
+        &coins(100000000u128, "quote"),
+    )
+    .unwrap();
+
+    let amount = Uint128::from(10000u128);
+
+    app.execute_contract(
+        api.addr_make("unstaker"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Unstake { max_fee: amount },
+        &coins(10000u128, "base"),
+    )
+    .unwrap();
+
+    let delegates: DelegatesResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Delegates {})
+        .unwrap();
+    assert_eq!(delegates.delegates.len(), 1);
+    let (delegate, _) = delegates.delegates[0].clone();
+
+    // 2 weeks later, ghost debt rate should have increased
+    app.update_block(|x| {
+        x.time = x.time.plus_days(21);
+    });
+
+    app.execute_contract(
+        api.addr_make("random"),
+        delegate.clone(),
+        &unstake::delegate::ExecuteMsg::Complete {},
+        &vec![],
+    )
+    .unwrap();
+
+    let controller_balances = query_balances(&app, contracts.controller);
+    let delegate_balances = query_balances(&app, delegate);
+    let provider_balances = query_balances(&app, contracts.provider);
+    let ghost_balances = query_balances(&app, contracts.ghost.clone());
+
+    // 21 days will be a total of 5.7534% interest
+    // So we'll pay 5.7534 on 10326 = 594,
+    // but have an allocated fee of 3.8356 on the total value = 10737 * 3.8356 = 411
+    // so we have a loss  here of 411 - 594 = -184 (rounding)
+    assert_eq!(controller_balances, coins(19816u128, "quote"));
+
+    // delegate should now be empty
+    assert_eq!(delegate_balances, vec![]);
+
+    // Provider should have received the base for unbonding, plus the surplus from the original funding
+    // (500,000 - (10000 * 1.07375))
+    assert_eq!(
+        provider_balances,
+        vec![coin(10000u128, "base"), coin(489263u128, "quote")]
+    );
+
+    // And ghost should have the borrowed amount returned with interest
+    // 10326 over 3 weeks at 100% = 3 / 52 = 595.
+    assert_eq!(ghost_balances, coins(100000595u128, "quote"));
+}
