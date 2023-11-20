@@ -11,7 +11,9 @@ use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
 use kujira::{fee_address, Denom, KujiraMsg, KujiraQuery};
-use unstake::controller::{DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
+use unstake::controller::{
+    DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg, RatesResponse,
+};
 use unstake::helpers::{predict_address, Controller};
 use unstake::rates::Rates;
 use unstake::{broker::Broker, ContractError};
@@ -198,10 +200,10 @@ pub fn execute(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+    let config = Config::load(deps.storage)?;
+    let rates = Rates::load(deps.querier, &config.vault_address)?;
     match msg {
         QueryMsg::Offer { amount } => {
-            let config = Config::load(deps.storage)?;
-            let rates = Rates::load(deps.querier, &config.vault_address)?;
             let broker = Broker::load(deps.storage)?;
             let offer = broker.offer(deps, &rates, &config.adapter, amount)?;
             Ok(to_json_binary(&OfferResponse::from(offer))?)
@@ -213,6 +215,7 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
             let response = DelegatesResponse { delegates };
             Ok(to_json_binary(&response)?)
         }
+        QueryMsg::Rates {} => Ok(to_json_binary(&RatesResponse::from(rates))?),
     }
 }
 

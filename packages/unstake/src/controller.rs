@@ -1,4 +1,4 @@
-use crate::{adapter::Adapter, broker::Offer};
+use crate::{adapter::Adapter, broker::Offer, rates::Rates};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Coin, Decimal, Timestamp, Uint128};
 use kujira::Denom;
@@ -71,12 +71,22 @@ pub enum QueryMsg {
 
     #[returns(DelegatesResponse)]
     Delegates {},
+
+    #[returns(RatesResponse)]
+    Rates {},
 }
 
 #[cw_serde]
 pub struct OfferResponse {
     pub amount: Uint128,
     pub fee: Uint128,
+}
+
+#[cw_serde]
+pub struct RatesResponse {
+    pub debt: Decimal,
+    pub interest: Decimal,
+    pub max_interest: Decimal,
 }
 
 #[cw_serde]
@@ -89,6 +99,16 @@ impl From<Offer> for OfferResponse {
         Self {
             amount: value.amount,
             fee: value.fee,
+        }
+    }
+}
+
+impl From<Rates> for RatesResponse {
+    fn from(value: Rates) -> Self {
+        Self {
+            debt: value.debt,
+            interest: value.interest,
+            max_interest: value.max_interest,
         }
     }
 }
