@@ -1,10 +1,10 @@
-use std::str::FromStr;
+use std::{ops::Add, str::FromStr};
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, CosmosMsg, Decimal, Deps, DepsMut, Empty, Env, MessageInfo, Response,
-    StdResult, Uint128,
+    to_json_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Empty, Env, MessageInfo,
+    Response, StdResult, Timestamp, Uint128,
 };
 use cw_storage_plus::Item;
 use cw_utils::NativeBalance;
@@ -12,15 +12,17 @@ use kujira::{Denom, DenomMsg, KujiraMsg, KujiraQuery};
 use kujira_ghost::receipt_vault::{ExecuteMsg, InstantiateMsg, QueryMsg, StatusResponse};
 
 static INIT: Item<InstantiateMsg> = Item::new("init");
+static TS: Item<Timestamp> = Item::new("ts");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut<KujiraQuery>,
-    _env: Env,
+    env: Env,
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response<KujiraMsg>> {
     INIT.save(deps.storage, &msg)?;
+    TS.save(deps.storage, &env.block.time)?;
     Ok(Response::default())
 }
 
@@ -43,6 +45,7 @@ pub fn execute(
         ExecuteMsg::Borrow(msg) => {
             let debt_share_ratio = Decimal::from_str("1.12")?;
             let debt_shares = msg.amount.div_ceil(debt_share_ratio);
+            TS.save(deps.storage, &env.block.time)?;
 
             let debt_mint_msg = CosmosMsg::Custom(KujiraMsg::Denom(DenomMsg::Mint {
                 denom: debt_token_denom.clone().into(),
@@ -70,7 +73,36 @@ pub fn execute(
             );
             Ok(Response::default().add_messages(vec![debt_mint_msg, borrow_msg]))
         }
-        ExecuteMsg::Repay(_) => todo!(),
+        ExecuteMsg::Repay(_) => {
+            let mut debt_tokens = Uint128::zero();
+            let mut repay_amount = Uint128::zero();
+
+            for Coin { amount, denom } in info.funds {
+                if denom == debt_token_denom.to_string() {
+                    debt_tokens = amount
+                }
+
+                if denom == denom.to_string() {
+                    repay_amount = amount
+                }
+            }
+
+            let interest_rate = Decimal::one();
+            let ts = TS.load(deps.storage)?;
+            let delta = Decimal::from_ratio(env.block.time.seconds(), ts.seconds()) * interest_rate;
+            let original_debt_rate = Decimal::from_str("1.12")?;
+
+            let debt_rate = original_debt_rate * Decimal::one().add(delta);
+            let repay_requirement = debt_tokens.mul_ceil(debt_rate);
+            if repay_requirement.ne(&repay_amount) {
+                return Err(cosmwasm_std::StdError::GenericErr {
+                    msg: "Insufficient repay amount".to_string(),
+                });
+            }
+            // Basic assertion that the repay amount
+
+            Ok(Response::default())
+        }
         ExecuteMsg::WhitelistMarket(_) => todo!(),
         ExecuteMsg::UpdateMarket(_) => todo!(),
         ExecuteMsg::UpdateConfig(_) => todo!(),
