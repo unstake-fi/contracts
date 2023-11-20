@@ -393,6 +393,14 @@ fn close_offer() {
     )
     .unwrap();
 
+    // Make sure that the provider has enough tokens to return once unbonding is complete
+    app.send_tokens(
+        api.addr_make("funder"),
+        contracts.provider.clone(),
+        &coins(500000u128, "quote"),
+    )
+    .unwrap();
+
     app.execute_contract(
         api.addr_make("lender"),
         contracts.ghost.clone(),
@@ -438,15 +446,30 @@ fn close_offer() {
     let provider_balances = query_balances(&app, contracts.provider);
     let ghost_balances = query_balances(&app, contracts.ghost.clone());
 
-    // reserve unchanged, returned to controller
-    assert_eq!(controller_balances, coins(20000u128, "quote"));
+    // despite the rate being as-predicted, this unstake will generate a profit.
+    // this is because the unstake fee - in this case 100% APR over 2 weeks = 3.8356%
+    // is charged on the amount of quote asset returned, but in order to honour this
+    // unbonding, we actually only need to borrow 100% - 3.8356% of the unbonded amout.
+
+    // We can calculate our way around this when quoting, but it's a nice extra bit of revenue
+    // for the protocol
+
+    // So we'll pay 3.8356 on 10326 = 396,
+    // but have an allocated fee of 3.8356 on the total value = 10737 * 3.8356 = 411
+    // so we have an excess profit here of 411 - 396 = 15
+    assert_eq!(controller_balances, coins(20014u128, "quote"));
 
     // delegate should now be empty
     assert_eq!(delegate_balances, vec![]);
 
-    // Provider should have received the base for unbonding
-    assert_eq!(provider_balances, coins(10000u128, "base"));
+    // Provider should have received the base for unbonding, plus the surplus from the original funding
+    // (500,000 - (10000 * 1.07375))
+    assert_eq!(
+        provider_balances,
+        vec![coin(10000u128, "base"), coin(489263u128, "quote")]
+    );
 
-    // And ghost should have the borrowed amount returned
-    assert_eq!(ghost_balances, coins(100000000u128, "quote"));
+    // And ghost should have the borrowed amount returned with interest
+    // 10326 over 2 weeks at 100% = 1 / 26 = 397.
+    assert_eq!(ghost_balances, coins(100000397u128, "quote"));
 }

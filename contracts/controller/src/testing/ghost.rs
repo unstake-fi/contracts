@@ -1,10 +1,13 @@
-use std::{ops::Add, str::FromStr};
+use std::{
+    ops::{Add, Mul},
+    str::FromStr,
+};
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Empty, Env, MessageInfo,
-    Response, StdResult, Timestamp, Uint128,
+    to_json_binary, Binary, Coin, CosmosMsg, CustomQuery, Decimal, Deps, DepsMut, Empty, Env,
+    MessageInfo, Response, StdResult, Timestamp, Uint128,
 };
 use cw_storage_plus::Item;
 use cw_utils::NativeBalance;
@@ -12,7 +15,7 @@ use kujira::{Denom, DenomMsg, KujiraMsg, KujiraQuery};
 use kujira_ghost::receipt_vault::{ExecuteMsg, InstantiateMsg, QueryMsg, StatusResponse};
 
 static INIT: Item<InstantiateMsg> = Item::new("init");
-static TS: Item<Timestamp> = Item::new("ts");
+static TS: Item<(Timestamp, Decimal)> = Item::new("ts");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -22,7 +25,7 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> StdResult<Response<KujiraMsg>> {
     INIT.save(deps.storage, &msg)?;
-    TS.save(deps.storage, &env.block.time)?;
+    TS.save(deps.storage, &(env.block.time, Decimal::from_str("1.12")?))?;
     Ok(Response::default())
 }
 
@@ -43,9 +46,9 @@ pub fn execute(
         ExecuteMsg::Deposit(_) => Ok(Response::default()),
         ExecuteMsg::Withdraw(_) => todo!(),
         ExecuteMsg::Borrow(msg) => {
-            let debt_share_ratio = Decimal::from_str("1.12")?;
+            let (_rate, debt_share_ratio) = rates(deps.as_ref(), env.block.time)?;
             let debt_shares = msg.amount.div_ceil(debt_share_ratio);
-            TS.save(deps.storage, &env.block.time)?;
+            TS.save(deps.storage, &(env.block.time, debt_share_ratio))?;
 
             let debt_mint_msg = CosmosMsg::Custom(KujiraMsg::Denom(DenomMsg::Mint {
                 denom: debt_token_denom.clone().into(),
@@ -86,14 +89,15 @@ pub fn execute(
                     repay_amount = amount
                 }
             }
+            let (_rate, debt_share_ratio) = rates(deps.as_ref(), env.block.time)?;
 
-            let interest_rate = Decimal::one();
-            let ts = TS.load(deps.storage)?;
-            let delta = Decimal::from_ratio(env.block.time.seconds(), ts.seconds()) * interest_rate;
-            let original_debt_rate = Decimal::from_str("1.12")?;
+            let repay_requirement = debt_tokens.mul_ceil(debt_share_ratio);
 
-            let debt_rate = original_debt_rate * Decimal::one().add(delta);
-            let repay_requirement = debt_tokens.mul_ceil(debt_rate);
+            let debt_burn_msg = CosmosMsg::Custom(KujiraMsg::Denom(DenomMsg::Burn {
+                denom: debt_token_denom.clone().into(),
+                amount: debt_tokens,
+            }));
+
             if repay_requirement.ne(&repay_amount) {
                 return Err(cosmwasm_std::StdError::GenericErr {
                     msg: "Insufficient repay amount".to_string(),
@@ -101,7 +105,7 @@ pub fn execute(
             }
             // Basic assertion that the repay amount
 
-            Ok(Response::default())
+            Ok(Response::default().add_message(debt_burn_msg))
         }
         ExecuteMsg::WhitelistMarket(_) => todo!(),
         ExecuteMsg::UpdateMarket(_) => todo!(),
@@ -110,16 +114,31 @@ pub fn execute(
     }
 }
 
+fn rates<T: CustomQuery>(deps: Deps<T>, now: Timestamp) -> StdResult<(Decimal, Decimal)> {
+    let interest_rate = Decimal::one();
+    let (last_ts, last_rate) = TS.load(deps.storage)?;
+    let delta = Decimal::from_ratio(now.seconds() - last_ts.seconds(), 365u128 * 24 * 60 * 60);
+    println!("interest_rate {interest_rate}");
+    println!("last_rate {last_rate}");
+    println!("delta {delta}");
+
+    let debt_rate = last_rate.mul(Decimal::one().add(delta * interest_rate));
+    println!("debt_rate {debt_rate}");
+
+    Ok((interest_rate, debt_rate))
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(_deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps<KujiraQuery>, env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    let (rate, debt_share_ratio) = rates(deps, env.block.time)?;
     match msg {
         QueryMsg::Config {} => todo!(),
         QueryMsg::Status {} => to_json_binary(&StatusResponse {
             deposited: Uint128::zero(),
             borrowed: Uint128::zero(),
-            rate: Decimal::one(),
-            deposit_redemption_ratio: Decimal::one(),
-            debt_share_ratio: Decimal::one(),
+            rate,
+            deposit_redemption_ratio: Decimal::zero(),
+            debt_share_ratio,
         }),
         QueryMsg::MarketParams { .. } => todo!(),
         QueryMsg::Markets { .. } => todo!(),

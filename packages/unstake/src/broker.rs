@@ -156,7 +156,7 @@ impl Broker {
         protocol_fee: Decimal,
     ) -> StdResult<(Uint128, Uint128)> {
         let debt_rate = self.fetch_debt_rate(deps.querier)?;
-        let debt_amount = debt_tokens * debt_rate;
+        let debt_amount = debt_tokens.mul_ceil(debt_rate);
         let mut available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
 
         // Start off by naively re-allocating the reserve back to the total

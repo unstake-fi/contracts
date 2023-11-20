@@ -8,7 +8,7 @@ use cosmwasm_std::{
 };
 use cw_storage_plus::Item;
 use cw_utils::one_coin;
-use kujira::{KujiraMsg, KujiraQuery};
+use kujira::{Denom, KujiraMsg, KujiraQuery};
 use unstake::ContractError;
 
 static PENDING: Item<Uint128> = Item::new("pending");
@@ -36,9 +36,14 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response<KujiraMsg>, ContractError> {
-    let rate = Decimal::from_str("1.07375");
+    let rate = Decimal::from_str("1.07375")?;
     match msg {
-        ExecuteMsg::WithdrawUnbonded {} => Ok(Response::default()),
+        ExecuteMsg::WithdrawUnbonded {} => {
+            let pending = PENDING.load(deps.storage)?;
+            let amount = pending * rate;
+
+            Ok(Response::default().add_message(Denom::from("quote").send(&info.sender, &amount)))
+        }
         ExecuteMsg::QueueUnbond {} => {
             let amount = one_coin(&info)?;
             PENDING.save(deps.storage, &amount.amount)?;
