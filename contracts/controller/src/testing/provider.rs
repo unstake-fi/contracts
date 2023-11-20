@@ -3,9 +3,15 @@ use std::str::FromStr;
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{
+    to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response, Uint128,
+};
+use cw_storage_plus::Item;
+use cw_utils::one_coin;
 use kujira::{KujiraMsg, KujiraQuery};
 use unstake::ContractError;
+
+static PENDING: Item<Uint128> = Item::new("pending");
 
 #[cw_serde]
 pub enum ExecuteMsg {
@@ -25,14 +31,20 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    _deps: DepsMut<KujiraQuery>,
+    deps: DepsMut<KujiraQuery>,
     _env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response<KujiraMsg>, ContractError> {
+    let rate = Decimal::from_str("1.07375");
     match msg {
         ExecuteMsg::WithdrawUnbonded {} => Ok(Response::default()),
-        ExecuteMsg::QueueUnbond {} => Ok(Response::default()),
+        ExecuteMsg::QueueUnbond {} => {
+            let amount = one_coin(&info)?;
+            PENDING.save(deps.storage, &amount.amount)?;
+
+            Ok(Response::default())
+        }
     }
 }
 

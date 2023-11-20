@@ -39,7 +39,7 @@ impl Contract {
     pub fn unbond_end<T>(&self) -> CosmosMsg<T> {
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: self.address.to_string(),
-            msg: self.unbond_start_msg.clone(),
+            msg: self.unbond_end_msg.clone(),
             funds: vec![],
         })
     }

@@ -46,6 +46,7 @@ pub fn execute(
                     let claim_msg = c.unbond_end();
                     let callback_msg =
                         Delegate(env.contract.address).call(ExecuteMsg::Callback {}, vec![])?;
+
                     Ok(Response::default()
                         .add_message(claim_msg)
                         .add_message(callback_msg))
@@ -62,6 +63,7 @@ pub fn execute(
             let offer = OFFER.load(deps.storage)?;
             let controller_msg = Controller(CONTROLLER.load(deps.storage)?)
                 .call(unstake::controller::ExecuteMsg::Complete { offer }, funds)?;
+
             Ok(Response::default().add_message(controller_msg))
         }
     }

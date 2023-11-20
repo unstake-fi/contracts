@@ -4,12 +4,12 @@ use std::ops::AddAssign;
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     coin, ensure_eq, to_json_binary, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Env,
-    MessageInfo, Order, Response, StdResult, Timestamp, Uint128, WasmMsg,
+    MessageInfo, Order, Response, StdError, StdResult, Timestamp, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
-use kujira::{amount, fee_address, KujiraMsg, KujiraQuery};
+use kujira::{fee_address, Denom, KujiraMsg, KujiraQuery};
 use unstake::controller::{DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
 use unstake::helpers::{predict_address, Controller};
 use unstake::{broker::Broker, ContractError};
@@ -150,11 +150,7 @@ pub fn execute(
             ]);
             funds.normalize();
 
-            let ghost_repay_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: config.vault_address.to_string(),
-                msg: to_json_binary(&kujira::ghost::receipt_vault::RepayMsg { callback: None })?,
-                funds: funds.into_vec(),
-            });
+            let ghost_repay_msg = vault_repay_msg(&config.vault_address, funds.into_vec())?;
 
             let mut msgs = vec![ghost_repay_msg];
             if !protocol_fee_amount.is_zero() {
@@ -226,4 +222,14 @@ pub fn vault_repay_msg<T>(addr: &Addr, coins: Vec<Coin>) -> StdResult<CosmosMsg<
         ))?,
         funds: coins,
     }))
+}
+
+pub fn amount(denom: &Denom, funds: Vec<Coin>) -> StdResult<Uint128> {
+    let coin = funds
+        .iter()
+        .find(|d| &Denom::from(d.denom.clone()) == denom);
+    match coin {
+        None => Err(StdError::not_found(denom.to_string())),
+        Some(Coin { amount, .. }) => Ok(amount.clone()),
+    }
 }

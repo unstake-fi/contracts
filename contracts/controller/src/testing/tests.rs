@@ -371,3 +371,82 @@ fn execute_offer() {
     // And ghost should have the borrowed amount deducted
     assert_eq!(ghost_balances, coins(100000000u128 - 10326u128, "quote"));
 }
+
+#[test]
+fn close_offer() {
+    // Quote where we have plenty of reserves, and the minimum rate is highter than the current rate
+    // The interest rate on ghost will be unchanged, so this will emulate a "perfect" unstake - ie the
+    // rate charged is exactly what is paid
+    let api = MockApiBech32::new("kujira");
+    let balances = vec![
+        (api.addr_make("funder"), coins(100000000u128, "quote")),
+        (api.addr_make("unstaker"), coins(10000u128, "base")),
+        (api.addr_make("lender"), coins(100000000u128, "quote")),
+    ];
+    let (mut app, contracts) = setup(balances);
+
+    app.execute_contract(
+        api.addr_make("funder"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Fund {},
+        &coins(20000u128, "quote"),
+    )
+    .unwrap();
+
+    app.execute_contract(
+        api.addr_make("lender"),
+        contracts.ghost.clone(),
+        &kujira_ghost::receipt_vault::ExecuteMsg::Deposit(
+            kujira_ghost::receipt_vault::DepositMsg { callback: None },
+        ),
+        &coins(100000000u128, "quote"),
+    )
+    .unwrap();
+
+    let amount = Uint128::from(10000u128);
+
+    app.execute_contract(
+        api.addr_make("unstaker"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Unstake { max_fee: amount },
+        &coins(10000u128, "base"),
+    )
+    .unwrap();
+
+    let delegates: DelegatesResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Delegates {})
+        .unwrap();
+    assert_eq!(delegates.delegates.len(), 1);
+    let (delegate, _) = delegates.delegates[0].clone();
+
+    // 2 weeks later, ghost debt rate should have increased
+    app.update_block(|x| {
+        x.time = x.time.plus_days(14);
+    });
+
+    app.execute_contract(
+        api.addr_make("random"),
+        delegate.clone(),
+        &unstake::delegate::ExecuteMsg::Complete {},
+        &vec![],
+    )
+    .unwrap();
+
+    let controller_balances = query_balances(&app, contracts.controller);
+    let delegate_balances = query_balances(&app, delegate);
+    let provider_balances = query_balances(&app, contracts.provider);
+    let ghost_balances = query_balances(&app, contracts.ghost.clone());
+
+    // reserve unchanged, returned to controller
+    assert_eq!(controller_balances, coins(20000u128, "quote"));
+
+    // delegate should now be empty
+    assert_eq!(delegate_balances, vec![]);
+
+    // Provider should have received the base for unbonding
+    assert_eq!(provider_balances, coins(10000u128, "base"));
+
+    // And ghost should have the borrowed amount returned
+    assert_eq!(ghost_balances, coins(100000000u128, "quote"));
+}
