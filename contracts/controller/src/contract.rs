@@ -14,7 +14,7 @@ use unstake::controller::{DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferRe
 use unstake::helpers::{predict_address, Controller};
 use unstake::{broker::Broker, ContractError};
 
-use crate::config::Config;
+use crate::config::{self, Config};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:unstake";
@@ -44,7 +44,7 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response<KujiraMsg>, ContractError> {
-    let config = Config::load(deps.as_ref())?;
+    let config = Config::load(deps.storage)?;
     match msg {
         ExecuteMsg::Unstake { max_fee } => {
             let amount = must_pay(&info, config.ask_denom.as_ref())?;
@@ -183,6 +183,17 @@ pub fn execute(
             broker.save(deps.storage)?;
             Ok(Response::default())
         }
+        ExecuteMsg::UpdateConfig {
+            owner,
+            protocol_fee,
+            delegate_code_id,
+        } => {
+            ensure_eq!(info.sender, config.owner, ContractError::Unauthorized {});
+            let mut config = Config::load(deps.storage)?;
+            config.update(owner, protocol_fee, delegate_code_id);
+            config.save(deps.storage)?;
+            Ok(Response::default())
+        }
     }
 }
 
@@ -190,7 +201,7 @@ pub fn execute(
 pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::Offer { amount } => {
-            let config = Config::load(deps)?;
+            let config = Config::load(deps.storage)?;
             let broker = Broker::load(deps.storage)?;
             let offer = broker.offer(deps, &config.adapter, amount)?;
             Ok(to_json_binary(&OfferResponse::from(offer))?)

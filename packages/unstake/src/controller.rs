@@ -49,6 +49,13 @@ pub enum ExecuteMsg {
     /// Adds funds to the reserve
     Fund {},
 
+    /// Update the Controller config
+    UpdateConfig {
+        owner: Option<Addr>,
+        protocol_fee: Option<Decimal>,
+        delegate_code_id: Option<u64>,
+    },
+
     /// Update the Broker config
     UpdateBroker {
         vault: Option<Addr>,

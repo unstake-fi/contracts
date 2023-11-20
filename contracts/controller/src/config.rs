@@ -18,12 +18,30 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load<T: CustomQuery>(deps: Deps<T>) -> StdResult<Self> {
-        CONFIG.load(deps.storage)
+    pub fn load(storage: &dyn Storage) -> StdResult<Self> {
+        CONFIG.load(storage)
     }
 
     pub fn save(&self, storage: &mut dyn Storage) -> StdResult<()> {
         CONFIG.save(storage, self)
+    }
+
+    pub fn update(
+        &mut self,
+        owner: Option<Addr>,
+        protocol_fee: Option<Decimal>,
+        delegate_code_id: Option<u64>,
+    ) {
+        if let Some(owner) = owner {
+            self.owner = owner
+        }
+        if let Some(protocol_fee) = protocol_fee {
+            self.protocol_fee = protocol_fee
+        }
+
+        if let Some(delegate_code_id) = delegate_code_id {
+            self.delegate_code_id = delegate_code_id
+        }
     }
 
     pub fn debt_denom(&self) -> Denom {
