@@ -195,3 +195,41 @@ fn quote_reserve_clamped() {
     assert_eq!(quote.amount, Uint128::from(9703u128));
     assert_eq!(quote.fee, Uint128::from(1034u128));
 }
+
+#[test]
+fn quote_unclamped() {
+    // Quote where we have plenty of reserves, and the current rate is higher than the minimum rate
+    let balances = vec![(Addr::unchecked("funder"), coins(100000000u128, "quote"))];
+    let (mut app, contracts) = setup(balances);
+    app.execute_contract(
+        Addr::unchecked("funder"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Fund {},
+        &coins(20000u128, "quote"),
+    )
+    .unwrap();
+
+    let quote: OfferResponse = app
+        .wrap()
+        .query_wasm_smart(
+            contracts.controller,
+            &QueryMsg::Offer {
+                amount: Uint128::from(10000u128),
+            },
+        )
+        .unwrap();
+
+    // Mock redemption rate of 1.07375
+    // current interest rate: 100%
+    // Max interest rate of 300%
+    // Default 2 week unbonding
+
+    // 31,536,000 seconds in a year
+    // 1,209,600 in 2 weeks
+    // 0.03835616438 of the current interest rate
+    // 0.03835616438 interest
+    // List price 10737, interest 411
+    // Offer amount 10737 - 411 = 9,703
+    assert_eq!(quote.amount, Uint128::from(10326u128));
+    assert_eq!(quote.fee, Uint128::from(411u128));
+}
