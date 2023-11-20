@@ -118,12 +118,7 @@ fn rates<T: CustomQuery>(deps: Deps<T>, now: Timestamp) -> StdResult<(Decimal, D
     let interest_rate = Decimal::one();
     let (last_ts, last_rate) = TS.load(deps.storage)?;
     let delta = Decimal::from_ratio(now.seconds() - last_ts.seconds(), 365u128 * 24 * 60 * 60);
-    println!("interest_rate {interest_rate}");
-    println!("last_rate {last_rate}");
-    println!("delta {delta}");
-
     let debt_rate = last_rate.mul(Decimal::one().add(delta * interest_rate));
-    println!("debt_rate {debt_rate}");
 
     Ok((interest_rate, debt_rate))
 }

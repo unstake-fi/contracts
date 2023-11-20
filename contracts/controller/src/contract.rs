@@ -1,4 +1,4 @@
-use std::ops::AddAssign;
+use std::ops::{AddAssign, Sub};
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -133,6 +133,11 @@ pub fn execute(
 
             let debt_tokens = amount(&config.debt_denom(), info.funds.clone())?;
             let returned_tokens = amount(&config.offer_denom, info.funds)?;
+            // We'll always get the reserve allocation back. If we get nothing else back it means the
+            // unbonding hasn't yet completed
+            if returned_tokens.sub(offer.reserve_allocation).is_zero() {
+                return Err(ContractError::InsufficentFunds {});
+            }
             let broker = Broker::load(deps.storage)?;
 
             // Calculate how much we need to send back to Ghost. Could be more or less than the offer amount

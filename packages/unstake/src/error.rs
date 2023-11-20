@@ -19,6 +19,9 @@ pub enum ContractError {
     #[error("InsufficentReserves")]
     InsufficentReserves {},
 
+    #[error("InsufficentFunds")]
+    InsufficentFunds {},
+
     #[error("MaxFeeExceeded")]
     MaxFeeExceeded {},
 
