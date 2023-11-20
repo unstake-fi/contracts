@@ -5,7 +5,7 @@ use std::{
 };
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Decimal, Deps, DepsMut, QuerierWrapper, StdResult, Uint128};
+use cosmwasm_std::{Addr, CustomQuery, Decimal, Deps, DepsMut, QuerierWrapper, StdResult, Uint128};
 use cw_storage_plus::Item;
 
 use crate::{adapter::Adapter, ContractError};
@@ -31,14 +31,14 @@ pub struct Broker {
 }
 
 impl Broker {
-    pub fn load(deps: Deps) -> StdResult<Self> {
+    pub fn load<T: CustomQuery>(deps: Deps<T>) -> StdResult<Self> {
         BROKER.load(deps.storage)
     }
 
     /// Make an offer for a givan `amount` of the staked token
-    pub fn offer(
+    pub fn offer<T: CustomQuery>(
         &self,
-        deps: Deps,
+        deps: Deps<T>,
         adapter: &Adapter,
         amount: Uint128,
     ) -> Result<Offer, ContractError> {
@@ -87,7 +87,7 @@ impl Broker {
 
     /// Commits the offer, deducts the reserve allocation from the total reservce, and returns
     /// messages that will instantiate the delegate contract with the debt tokens and ask tokens
-    pub fn accept_offer(&self, deps: DepsMut, offer: &Offer) -> StdResult<()> {
+    pub fn accept_offer<T: CustomQuery>(&self, deps: DepsMut<T>, offer: &Offer) -> StdResult<()> {
         let mut available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
         available_reserve -= offer.reserve_allocation;
         RESERVES.save(deps.storage, &available_reserve)?;
@@ -96,9 +96,9 @@ impl Broker {
 
     /// Receives the original offer, debt tokens, and returned unbonded tokens from the delegate,
     /// reconciles the reserves
-    pub fn close_offer(
+    pub fn close_offer<T: CustomQuery>(
         &self,
-        deps: DepsMut,
+        deps: DepsMut<T>,
         offer: &Offer,
         debt_tokens: Uint128,
         returned_tokens: Uint128,
@@ -135,7 +135,7 @@ impl Broker {
             .div(Uint128::from(YEAR_SECONDS))
     }
 
-    fn fetch_debt_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {
+    fn fetch_debt_rate<T: CustomQuery>(&self, query: QuerierWrapper<T>) -> StdResult<Decimal> {
         let status: kujira_ghost::receipt_vault::StatusResponse = query.query_wasm_smart(
             self.vault.to_string(),
             &kujira_ghost::receipt_vault::QueryMsg::Status {},
@@ -144,7 +144,10 @@ impl Broker {
         Ok(status.debt_share_ratio)
     }
 
-    fn fetch_current_interest_rate(&self, query: QuerierWrapper) -> StdResult<Decimal> {
+    fn fetch_current_interest_rate<T: CustomQuery>(
+        &self,
+        query: QuerierWrapper<T>,
+    ) -> StdResult<Decimal> {
         let status: kujira_ghost::receipt_vault::StatusResponse = query.query_wasm_smart(
             self.vault.to_string(),
             &kujira_ghost::receipt_vault::QueryMsg::Status {},
@@ -152,7 +155,10 @@ impl Broker {
 
         Ok(status.rate)
     }
-    fn fetch_max_interest_rate(&self, _query: QuerierWrapper) -> StdResult<Decimal> {
+    fn fetch_max_interest_rate<T: CustomQuery>(
+        &self,
+        _query: QuerierWrapper<T>,
+    ) -> StdResult<Decimal> {
         // TODO: Publish & use new interest rate params
         // let rates: kujira_ghost::receipt_vault::InterestParamsResponse = query.query_wasm_smart(
         //     self.vault.to_string(),

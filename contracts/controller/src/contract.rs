@@ -7,7 +7,7 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
-use kujira::{amount, fee_address};
+use kujira::{amount, fee_address, KujiraMsg, KujiraQuery};
 use unstake::controller::{DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg};
 use unstake::helpers::{predict_address, Controller};
 use unstake::{broker::Broker, ContractError};
@@ -22,11 +22,11 @@ static DELEGATES: Map<Addr, Timestamp> = Map::new("delegates");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    deps: DepsMut,
+    deps: DepsMut<KujiraQuery>,
     _env: Env,
     _info: MessageInfo,
     msg: InstantiateMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response<KujiraMsg>, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     let config = Config::from(msg);
     config.save(deps)?;
@@ -35,11 +35,11 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    deps: DepsMut,
+    deps: DepsMut<KujiraQuery>,
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response<KujiraMsg>, ContractError> {
     let config = Config::load(deps.as_ref())?;
     match msg {
         ExecuteMsg::Unstake { max_fee } => {
@@ -126,7 +126,7 @@ pub fn execute(
             ]);
             funds.normalize();
 
-            let ghost_repay_msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
+            let ghost_repay_msg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: config.vault_address.to_string(),
                 msg: to_json_binary(&kujira::ghost::receipt_vault::RepayMsg { callback: None })?,
                 funds: funds.into_vec(),
@@ -147,7 +147,7 @@ pub fn execute(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::Offer { amount } => {
             let config = Config::load(deps)?;
@@ -165,7 +165,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
     }
 }
 
-pub fn vault_borrow_msg(addr: &Addr, amount: Uint128) -> StdResult<CosmosMsg> {
+pub fn vault_borrow_msg<T>(addr: &Addr, amount: Uint128) -> StdResult<CosmosMsg<T>> {
     Ok(CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: addr.to_string(),
         msg: to_json_binary(&kujira_ghost::receipt_vault::ExecuteMsg::Borrow(
@@ -178,7 +178,7 @@ pub fn vault_borrow_msg(addr: &Addr, amount: Uint128) -> StdResult<CosmosMsg> {
     }))
 }
 
-pub fn vault_repay_msg(addr: &Addr, coins: Vec<Coin>) -> StdResult<CosmosMsg> {
+pub fn vault_repay_msg<T>(addr: &Addr, coins: Vec<Coin>) -> StdResult<CosmosMsg<T>> {
     Ok(CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: addr.to_string(),
         msg: to_json_binary(&kujira_ghost::receipt_vault::ExecuteMsg::Repay(
@@ -187,6 +187,3 @@ pub fn vault_repay_msg(addr: &Addr, coins: Vec<Coin>) -> StdResult<CosmosMsg> {
         funds: coins,
     }))
 }
-
-#[cfg(test)]
-mod tests {}

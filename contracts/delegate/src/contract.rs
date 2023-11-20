@@ -1,7 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{ensure_eq, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{ensure_eq, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use cw_storage_plus::Item;
+use kujira::{KujiraMsg, KujiraQuery};
 use unstake::adapter::Adapter;
 use unstake::broker::Offer;
 use unstake::delegate::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -14,11 +15,11 @@ static ADAPTER: Item<Adapter> = Item::new("adapter");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    deps: DepsMut,
+    deps: DepsMut<KujiraQuery>,
     env: Env,
     _info: MessageInfo,
     msg: InstantiateMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response<KujiraMsg>, ContractError> {
     CONTROLLER.save(deps.storage, &msg.controller)?;
     OFFER.save(deps.storage, &msg.offer)?;
     ADAPTER.save(deps.storage, &msg.adapter)?;
@@ -33,11 +34,11 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    deps: DepsMut,
+    deps: DepsMut<KujiraQuery>,
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response<KujiraMsg>, ContractError> {
     match msg {
         ExecuteMsg::Complete {} => {
             let adapter = ADAPTER.load(deps.storage)?;
@@ -68,7 +69,7 @@ pub fn execute(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(_deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+pub fn query(_deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {}
 }
 

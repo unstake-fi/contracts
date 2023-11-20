@@ -2,8 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{
-    instantiate2_address, to_json_binary, Addr, Binary, CodeInfoResponse, Coin, CosmosMsg, Deps,
-    Env, StdResult, WasmMsg,
+    instantiate2_address, to_json_binary, Addr, Binary, CodeInfoResponse, Coin, CosmosMsg,
+    CustomQuery, Deps, Env, StdResult, WasmMsg,
 };
 
 use crate::ContractError;
@@ -16,11 +16,11 @@ impl Delegate {
         self.0.clone()
     }
 
-    pub fn call<T: Into<crate::delegate::ExecuteMsg>>(
+    pub fn call<T: Into<crate::delegate::ExecuteMsg>, U>(
         &self,
         msg: T,
         funds: Vec<Coin>,
-    ) -> Result<CosmosMsg, ContractError> {
+    ) -> Result<CosmosMsg<U>, ContractError> {
         let msg = to_json_binary(&msg.into())?;
         Ok(WasmMsg::Execute {
             contract_addr: self.addr().into(),
@@ -39,11 +39,11 @@ impl Controller {
         self.0.clone()
     }
 
-    pub fn call<T: Into<crate::controller::ExecuteMsg>>(
+    pub fn call<T: Into<crate::controller::ExecuteMsg>, U>(
         &self,
         msg: T,
         funds: Vec<Coin>,
-    ) -> Result<CosmosMsg, ContractError> {
+    ) -> Result<CosmosMsg<U>, ContractError> {
         let msg = to_json_binary(&msg.into())?;
         Ok(WasmMsg::Execute {
             contract_addr: self.addr().into(),
@@ -54,10 +54,10 @@ impl Controller {
     }
 }
 
-pub fn predict_address(
+pub fn predict_address<T: CustomQuery>(
     code_id: u64,
     label: &String,
-    deps: &Deps,
+    deps: &Deps<T>,
     env: &Env,
 ) -> StdResult<(Addr, Binary)> {
     let CodeInfoResponse { checksum, .. } = deps.querier.query_wasm_code_info(code_id)?;

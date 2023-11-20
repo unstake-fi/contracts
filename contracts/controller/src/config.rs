@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Decimal, Deps, DepsMut, StdResult};
+use cosmwasm_std::{Addr, CustomQuery, Decimal, Deps, DepsMut, StdResult};
 use cw_storage_plus::Item;
 use kujira::Denom;
 use unstake::{adapter::Adapter, controller::InstantiateMsg};
@@ -18,11 +18,11 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load(deps: Deps) -> StdResult<Self> {
+    pub fn load<T: CustomQuery>(deps: Deps<T>) -> StdResult<Self> {
         CONFIG.load(deps.storage)
     }
 
-    pub fn save(&self, deps: DepsMut) -> StdResult<()> {
+    pub fn save<T: CustomQuery>(&self, deps: DepsMut<T>) -> StdResult<()> {
         CONFIG.save(deps.storage, self)
     }
 

@@ -1,5 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Coin, CosmosMsg, Decimal, QuerierWrapper, StdResult, WasmMsg};
+use cosmwasm_std::{
+    Addr, Binary, Coin, CosmosMsg, CustomQuery, Decimal, QuerierWrapper, StdResult, WasmMsg,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -17,13 +19,16 @@ pub struct Contract {
 }
 
 impl Contract {
-    pub fn redemption_rate(&self, querier: QuerierWrapper) -> StdResult<Decimal> {
+    pub fn redemption_rate<T: CustomQuery>(
+        &self,
+        querier: QuerierWrapper<T>,
+    ) -> StdResult<Decimal> {
         let state: ContractStateResponse =
             querier.query_wasm_smart(self.address.to_string(), &ContractQueryMsg::State {})?;
         Ok(state.exchange_rate)
     }
 
-    pub fn unbond_start(&self, funds: Vec<Coin>) -> CosmosMsg {
+    pub fn unbond_start<T>(&self, funds: Vec<Coin>) -> CosmosMsg<T> {
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: self.address.to_string(),
             msg: self.unbond_start_msg.clone(),
@@ -31,7 +36,7 @@ impl Contract {
         })
     }
 
-    pub fn unbond_end(&self) -> CosmosMsg {
+    pub fn unbond_end<T>(&self) -> CosmosMsg<T> {
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: self.address.to_string(),
             msg: self.unbond_start_msg.clone(),
@@ -42,7 +47,7 @@ impl Contract {
 
 #[cw_serde]
 #[derive(QueryResponses)]
-enum ContractQueryMsg {
+pub enum ContractQueryMsg {
     /// The contract's current state. Response: `StateResponse`
     #[returns(ContractStateResponse)]
     State {},

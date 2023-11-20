@@ -1,0 +1,3 @@
+[submodule "ghost"]
+	path = ghost
+	url = https://github.com/Team-Kujira/ghost.git
