@@ -58,8 +58,8 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct OfferResponse {
-    amount: Uint128,
-    fee: Uint128,
+    pub amount: Uint128,
+    pub fee: Uint128,
 }
 
 #[cw_serde]

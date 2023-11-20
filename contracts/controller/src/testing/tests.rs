@@ -4,8 +4,11 @@ use cosmwasm_std::{to_json_binary, Addr, Decimal, Uint128};
 use cw_multi_test::{ContractWrapper, Executor};
 use kujira::{Denom, HumanPrice};
 use kujira_ghost::common::OracleType;
-use kujira_rs_testing::mock::mock_app;
-use unstake::adapter::Contract;
+use kujira_rs_testing::mock::{mock_app, CustomApp};
+use unstake::{
+    adapter::Contract,
+    controller::{OfferResponse, QueryMsg},
+};
 
 struct Contracts {
     pub ghost: Addr,
@@ -13,7 +16,7 @@ struct Contracts {
     pub controller: Addr,
 }
 
-fn setup() -> Contracts {
+fn setup() -> (CustomApp, Contracts) {
     let mut app = mock_app(vec![]);
     let delegate_code = ContractWrapper::new(
         unstake_delegate::contract::execute,
@@ -109,11 +112,14 @@ fn setup() -> Contracts {
             None,
         )
         .unwrap();
-    Contracts {
-        ghost: vault_address,
-        provider: provider_address,
-        controller: controller_address,
-    }
+    (
+        app,
+        Contracts {
+            ghost: vault_address,
+            provider: provider_address,
+            controller: controller_address,
+        },
+    )
 }
 
 #[test]
@@ -124,5 +130,27 @@ fn instantiate() {
 #[test]
 fn quote_initial() {
     // Check that when the contract is new, and there is no reserve fund, the quoted rate uses the max rate from the vault
-    let contracts = setup();
+    let (app, contracts) = setup();
+    let quote: OfferResponse = app
+        .wrap()
+        .query_wasm_smart(
+            contracts.controller,
+            &QueryMsg::Offer {
+                amount: Uint128::from(10000u128),
+            },
+        )
+        .unwrap();
+    // Mock redemption rate of 1.07375
+    // Max interest rate of 300%
+    // Default 2 week unbonding
+
+    // 31,536,000 seconds in a year
+    // 1,209,600 in 2 weeks
+    // 0.03835616438 of the max interest rate
+    // 0.1150684931 interest
+    // List price 9,313
+    // Interest amount 1,071
+    // Offer amount 9,313 - 1,071 = 8,242
+    assert_eq!(quote.amount, Uint128::from(8242u128));
+    assert_eq!(quote.fee, Uint128::from(1071u128));
 }
