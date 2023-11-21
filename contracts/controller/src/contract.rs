@@ -10,7 +10,7 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
-use kujira::{fee_address, Denom, KujiraMsg, KujiraQuery};
+use kujira::{Denom, KujiraMsg, KujiraQuery};
 use unstake::broker::Status;
 use unstake::controller::{
     ConfigResponse, DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg,
@@ -168,7 +168,7 @@ pub fn execute(
                 msgs.push(
                     config
                         .offer_denom
-                        .send(&fee_address(), &protocol_fee_amount),
+                        .send(&config.protocol_fee_address, &protocol_fee_amount),
                 )
             }
 
@@ -189,11 +189,12 @@ pub fn execute(
         ExecuteMsg::UpdateConfig {
             owner,
             protocol_fee,
+            protocol_fee_address,
             delegate_code_id,
         } => {
             ensure_eq!(info.sender, config.owner, ContractError::Unauthorized {});
             let mut config = Config::load(deps.storage)?;
-            config.update(owner, protocol_fee, delegate_code_id);
+            config.update(owner, protocol_fee, protocol_fee_address, delegate_code_id);
             config.save(deps.storage)?;
             Ok(Response::default())
         }

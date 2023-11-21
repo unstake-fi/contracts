@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use cosmwasm_std::{coin, coins, to_json_binary, Addr, Coin, Decimal, Uint128};
 use cw_multi_test::{ContractWrapper, Executor};
-use kujira::{Denom, HumanPrice};
+use kujira::{fee_address, Denom, HumanPrice};
 use kujira_ghost::common::OracleType;
 use kujira_rs_testing::{
     api::MockApiBech32,
@@ -96,6 +96,7 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
             &unstake::controller::InstantiateMsg {
                 owner: app.api().addr_make("owner"),
                 protocol_fee: Decimal::from_str("0.25").unwrap(),
+                protocol_fee_address: fee_address(),
                 delegate_code_id,
                 vault_address: vault_address.clone(),
                 ask_denom: Denom::from("base"),

@@ -13,6 +13,7 @@ static CONFIG: Item<Config> = Item::new("config");
 pub struct Config {
     pub owner: Addr,
     pub protocol_fee: Decimal,
+    pub protocol_fee_address: Addr,
     pub delegate_code_id: u64,
     pub vault_address: Addr,
     pub offer_denom: Denom,
@@ -33,6 +34,7 @@ impl Config {
         &mut self,
         owner: Option<Addr>,
         protocol_fee: Option<Decimal>,
+        protocol_fee_address: Option<Addr>,
         delegate_code_id: Option<u64>,
     ) {
         if let Some(owner) = owner {
@@ -40,6 +42,10 @@ impl Config {
         }
         if let Some(protocol_fee) = protocol_fee {
             self.protocol_fee = protocol_fee
+        }
+
+        if let Some(protocol_fee_address) = protocol_fee_address {
+            self.protocol_fee_address = protocol_fee_address
         }
 
         if let Some(delegate_code_id) = delegate_code_id {
@@ -57,6 +63,7 @@ impl From<InstantiateMsg> for Config {
         Self {
             owner: value.owner,
             protocol_fee: value.protocol_fee,
+            protocol_fee_address: value.protocol_fee_address,
             delegate_code_id: value.delegate_code_id,
             vault_address: value.vault_address,
             offer_denom: value.offer_denom,
@@ -71,6 +78,7 @@ impl From<Config> for ConfigResponse {
         Self {
             owner: value.owner,
             protocol_fee: value.protocol_fee,
+            protocol_fee_address: value.protocol_fee_address,
             delegate_code_id: value.delegate_code_id,
             vault_address: value.vault_address,
             offer_denom: value.offer_denom,

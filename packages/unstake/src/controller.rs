@@ -11,6 +11,7 @@ use kujira::Denom;
 pub struct InstantiateMsg {
     pub owner: Addr,
     pub protocol_fee: Decimal,
+    pub protocol_fee_address: Addr,
     pub delegate_code_id: u64,
     pub vault_address: Addr,
 
@@ -57,6 +58,7 @@ pub enum ExecuteMsg {
     UpdateConfig {
         owner: Option<Addr>,
         protocol_fee: Option<Decimal>,
+        protocol_fee_address: Option<Addr>,
         delegate_code_id: Option<u64>,
     },
 
@@ -116,6 +118,7 @@ pub struct StatusResponse {
 pub struct ConfigResponse {
     pub owner: Addr,
     pub protocol_fee: Decimal,
+    pub protocol_fee_address: Addr,
     pub delegate_code_id: u64,
     pub vault_address: Addr,
     pub offer_denom: Denom,
