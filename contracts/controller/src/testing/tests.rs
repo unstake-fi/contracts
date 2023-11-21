@@ -424,6 +424,85 @@ fn execute_offer() {
 }
 
 #[test]
+fn execute_unfunded_offer() {
+    // Quote where we no plenty of reserves
+    let api = MockApiBech32::new("kujira");
+    let balances = vec![
+        (api.addr_make("unstaker"), coins(10000u128, "base")),
+        (api.addr_make("lender"), coins(100000000u128, "quote")),
+    ];
+    let (mut app, contracts) = setup(balances);
+
+    app.execute_contract(
+        api.addr_make("lender"),
+        contracts.ghost.clone(),
+        &kujira_ghost::receipt_vault::ExecuteMsg::Deposit(
+            kujira_ghost::receipt_vault::DepositMsg { callback: None },
+        ),
+        &coins(100000000u128, "quote"),
+    )
+    .unwrap();
+
+    let amount = Uint128::from(10000u128);
+
+    let status: StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
+        .unwrap();
+
+    assert_eq!(status.reserve_available, Uint128::zero());
+    assert_eq!(status.reserve_deployed, Uint128::zero());
+    assert_eq!(status.total_base, Uint128::zero());
+    assert_eq!(status.total_quote, Uint128::zero());
+
+    app.execute_contract(
+        api.addr_make("unstaker"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Unstake { max_fee: amount },
+        &coins(10000u128, "base"),
+    )
+    .unwrap();
+
+    let delegates: DelegatesResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Delegates {})
+        .unwrap();
+    assert_eq!(delegates.delegates.len(), 1);
+    let (delegate, _) = delegates.delegates[0].clone();
+
+    let unstaker_balances = query_balances(&app, api.addr_make("unstaker"));
+    let controller_balances = query_balances(&app, contracts.controller.clone());
+    let delegate_balances = query_balances(&app, delegate);
+    let provider_balances = query_balances(&app, contracts.provider);
+    let ghost_balances = query_balances(&app, contracts.ghost.clone());
+
+    // unstaker gets their money, less the fees
+    assert_eq!(unstaker_balances, coins(9503u128, "quote"));
+    // remainder of reserve left on controller
+    assert_eq!(controller_balances, vec![]);
+    // delegate has the debt tokens, and no reserve allocation
+    assert_eq!(
+        delegate_balances,
+        coins(8485u128, format!("factory/{}/udebt", contracts.ghost)),
+    );
+    // Provider should have received the base for unbonding
+    assert_eq!(provider_balances, coins(10000u128, "base"));
+
+    // And ghost should have the borrowed amount deducted
+    assert_eq!(ghost_balances, coins(100000000u128 - 9503u128, "quote"));
+
+    let status: StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller, &QueryMsg::Status {})
+        .unwrap();
+
+    assert_eq!(status.reserve_available, Uint128::zero());
+    assert_eq!(status.reserve_deployed, Uint128::zero());
+    assert_eq!(status.total_base, Uint128::from(10000u128));
+    assert_eq!(status.total_quote, Uint128::zero());
+}
+
+#[test]
 fn close_offer() {
     // Quote where we have plenty of reserves, and the minimum rate is highter than the current rate
     // The interest rate on ghost will be unchanged, so this will emulate a "perfect" unstake - ie the
