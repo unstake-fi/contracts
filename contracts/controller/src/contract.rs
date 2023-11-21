@@ -70,8 +70,8 @@ pub fn execute(
             )?;
 
             Ok(Response::default()
-                .add_message(send_msg)
                 .add_message(borrow_msg)
+                .add_message(send_msg)
                 .add_message(callback_msg))
         }
         ExecuteMsg::UnstakeCallback {
@@ -224,6 +224,11 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
             deps.storage,
         )))?),
     }
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(_deps: DepsMut<KujiraQuery>, _env: Env, _msg: ()) -> StdResult<Response<KujiraMsg>> {
+    Ok(Response::default())
 }
 
 pub fn vault_borrow_msg<T>(addr: &Addr, amount: Uint128) -> StdResult<CosmosMsg<T>> {
