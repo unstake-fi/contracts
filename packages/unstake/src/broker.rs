@@ -6,7 +6,7 @@ use std::{
     ops::{Add, Div, Mul, Sub},
 };
 
-use crate::{adapter::Adapter, controller::InstantiateMsg, rates::Rates, ContractError};
+use crate::{controller::InstantiateMsg, rates::Rates, ContractError};
 
 static BROKER: Item<Broker> = Item::new("broker");
 
@@ -66,17 +66,13 @@ impl Broker {
         &self,
         deps: Deps<T>,
         rates: &Rates,
-        adapter: &Adapter,
         unbond_amount: Uint128,
     ) -> Result<Offer, ContractError> {
-        let redemption_rate = match adapter {
-            Adapter::Contract(c) => c.redemption_rate(deps.querier)?,
-        };
-        let current_rate = rates.interest;
-        let max_rate = rates.max_interest;
+        let current_rate = rates.vault_interest;
+        let max_rate = rates.vault_max_interest;
 
         // Calculate the value of the Unstaked amount, in terms of the underlying asset. I.e. the max amount we'll need to borrow
-        let value = unbond_amount.mul(redemption_rate);
+        let value = unbond_amount.mul(rates.provider_redemption);
 
         // For now we'll naively assume that the borrow rate will stay fixed for the duration of the unbond.
         // During periods of high interest, Unstakes will cost more and a user will have to wait for the rate
@@ -144,7 +140,7 @@ impl Broker {
         returned_tokens: Uint128,
         protocol_fee: Decimal,
     ) -> Result<(Uint128, Uint128), ContractError> {
-        let debt_rate = rates.debt;
+        let debt_rate = rates.vault_debt;
         let debt_amount = debt_tokens.mul_ceil(debt_rate);
         let mut returned_tokens = returned_tokens;
         let mut available_reserve = RESERVES.load(deps.storage).unwrap_or_default();

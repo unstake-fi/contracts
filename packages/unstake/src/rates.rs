@@ -1,17 +1,28 @@
 use cosmwasm_std::{Addr, CustomQuery, Decimal, QuerierWrapper, StdResult};
 
+use crate::adapter::Adapter;
+
 pub struct Rates {
-    pub debt: Decimal,
-    pub interest: Decimal,
-    pub max_interest: Decimal,
+    pub vault_debt: Decimal,
+    pub vault_interest: Decimal,
+    pub vault_max_interest: Decimal,
+    pub provider_redemption: Decimal,
 }
 
 impl Rates {
-    pub fn load<C: CustomQuery>(query: QuerierWrapper<C>, vault: &Addr) -> StdResult<Self> {
+    pub fn load<C: CustomQuery>(
+        query: QuerierWrapper<C>,
+        adapter: &Adapter,
+        vault: &Addr,
+    ) -> StdResult<Self> {
         let status: kujira_ghost::receipt_vault::StatusResponse = query.query_wasm_smart(
             vault.to_string(),
             &kujira_ghost::receipt_vault::QueryMsg::Status {},
         )?;
+
+        let provider_redemption = match adapter {
+            Adapter::Contract(c) => c.redemption_rate(query)?,
+        };
 
         // TODO: Publish & use new interest rate params
         // let rates: kujira_ghost::receipt_vault::InterestParamsResponse = query.query_wasm_smart(
@@ -20,9 +31,10 @@ impl Rates {
         // )?;
 
         Ok(Self {
-            debt: status.debt_share_ratio,
-            interest: status.rate,
-            max_interest: Decimal::from_ratio(3u128, 1u128),
+            vault_debt: status.debt_share_ratio,
+            vault_interest: status.rate,
+            vault_max_interest: Decimal::from_ratio(3u128, 1u128),
+            provider_redemption,
         })
     }
 }

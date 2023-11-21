@@ -52,8 +52,8 @@ pub fn execute(
         ExecuteMsg::Unstake { max_fee } => {
             let amount = must_pay(&info, config.ask_denom.as_ref())?;
             let broker = Broker::load(deps.storage)?;
-            let rates = Rates::load(deps.querier, &config.vault_address)?;
-            let offer = broker.offer(deps.as_ref(), &rates, &config.adapter, amount)?;
+            let rates = Rates::load(deps.querier, &config.adapter, &config.vault_address)?;
+            let offer = broker.offer(deps.as_ref(), &rates, amount)?;
             if offer.fee.gt(&max_fee) {
                 return Err(ContractError::MaxFeeExceeded {});
             };
@@ -136,7 +136,7 @@ pub fn execute(
 
             let debt_tokens = amount(&config.debt_denom(), info.funds.clone())?;
             let returned_tokens = amount(&config.offer_denom, info.funds)?;
-            let rates = Rates::load(deps.querier, &config.vault_address)?;
+            let rates = Rates::load(deps.querier, &config.adapter, &config.vault_address)?;
             // We'll always get the reserve allocation back. If we get nothing else back it means the
             // unbonding hasn't yet completed
             if returned_tokens.sub(offer.reserve_allocation).is_zero() {
@@ -202,11 +202,11 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     let config = Config::load(deps.storage)?;
-    let rates = Rates::load(deps.querier, &config.vault_address)?;
+    let rates = Rates::load(deps.querier, &config.adapter, &config.vault_address)?;
     match msg {
         QueryMsg::Offer { amount } => {
             let broker = Broker::load(deps.storage)?;
-            let offer = broker.offer(deps, &rates, &config.adapter, amount)?;
+            let offer = broker.offer(deps, &rates, amount)?;
             Ok(to_json_binary(&OfferResponse::from(offer))?)
         }
         QueryMsg::Delegates {} => {

@@ -87,9 +87,10 @@ pub struct OfferResponse {
 
 #[cw_serde]
 pub struct RatesResponse {
-    pub debt: Decimal,
-    pub interest: Decimal,
-    pub max_interest: Decimal,
+    pub vault_debt: Decimal,
+    pub vault_interest: Decimal,
+    pub vault_max_interest: Decimal,
+    pub provider_redemption: Decimal,
 }
 
 #[cw_serde]
@@ -133,9 +134,10 @@ impl From<Offer> for OfferResponse {
 impl From<Rates> for RatesResponse {
     fn from(value: Rates) -> Self {
         Self {
-            debt: value.debt,
-            interest: value.interest,
-            max_interest: value.max_interest,
+            vault_debt: value.vault_debt,
+            vault_interest: value.vault_interest,
+            vault_max_interest: value.vault_max_interest,
+            provider_redemption: value.provider_redemption,
         }
     }
 }
