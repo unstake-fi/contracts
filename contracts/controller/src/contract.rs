@@ -11,9 +11,10 @@ use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
 use kujira::{fee_address, Denom, KujiraMsg, KujiraQuery};
+use unstake::broker::Status;
 use unstake::controller::{
     ConfigResponse, DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg,
-    RatesResponse,
+    RatesResponse, StatusResponse,
 };
 use unstake::helpers::{predict_address, Controller};
 use unstake::rates::Rates;
@@ -58,8 +59,8 @@ pub fn execute(
                 return Err(ContractError::MaxFeeExceeded {});
             };
             broker.accept_offer(deps, &offer)?;
-            let send_msg = config.offer_denom.send(&info.sender, &offer.amount);
-            let borrow_msg = vault_borrow_msg(&config.vault_address, offer.amount)?;
+            let send_msg = config.offer_denom.send(&info.sender, &offer.offer_amount);
+            let borrow_msg = vault_borrow_msg(&config.vault_address, offer.offer_amount)?;
             let callback_msg = Controller(env.contract.address).call(
                 ExecuteMsg::UnstakeCallback {
                     unbond_amount: config.ask_denom.coin(&amount),
@@ -218,6 +219,9 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
         }
         QueryMsg::Rates {} => Ok(to_json_binary(&RatesResponse::from(rates))?),
         QueryMsg::Config {} => Ok(to_json_binary(&ConfigResponse::from(config))?),
+        QueryMsg::Status {} => Ok(to_json_binary(&StatusResponse::from(Status::load(
+            deps.storage,
+        )))?),
     }
 }
 

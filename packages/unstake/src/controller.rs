@@ -1,4 +1,8 @@
-use crate::{adapter::Adapter, broker::Offer, rates::Rates};
+use crate::{
+    adapter::Adapter,
+    broker::{Offer, Status},
+    rates::Rates,
+};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Coin, Decimal, Timestamp, Uint128};
 use kujira::Denom;
@@ -75,6 +79,9 @@ pub enum QueryMsg {
     #[returns(RatesResponse)]
     Rates {},
 
+    #[returns(StatusResponse)]
+    Status {},
+
     #[returns(ConfigResponse)]
     Config {},
 }
@@ -91,6 +98,18 @@ pub struct RatesResponse {
     pub vault_interest: Decimal,
     pub vault_max_interest: Decimal,
     pub provider_redemption: Decimal,
+}
+
+#[cw_serde]
+pub struct StatusResponse {
+    /// The total amount of base asset that has been requested for unbonding
+    pub total_base: Uint128,
+    /// The total amount of quote asset that has been returned from unbonding
+    pub total_quote: Uint128,
+    /// The amount of reserve currently available for new Unstakes
+    pub reserve_available: Uint128,
+    /// The amount of reserve currently deployed in in-flight Unstakes
+    pub reserve_deployed: Uint128,
 }
 
 #[cw_serde]
@@ -125,7 +144,7 @@ pub struct DelegatesResponse {
 impl From<Offer> for OfferResponse {
     fn from(value: Offer) -> Self {
         Self {
-            amount: value.amount,
+            amount: value.offer_amount,
             fee: value.fee,
         }
     }
@@ -151,6 +170,17 @@ impl From<Adapter> for AdapterResponse {
                 unbond_start_msg: contract.unbond_start_msg,
                 unbond_end_msg: contract.unbond_end_msg,
             }),
+        }
+    }
+}
+
+impl From<Status> for StatusResponse {
+    fn from(value: Status) -> Self {
+        Self {
+            total_base: value.total_base,
+            total_quote: value.total_quote,
+            reserve_available: value.reserve_available,
+            reserve_deployed: value.reserve_deployed,
         }
     }
 }

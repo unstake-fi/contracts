@@ -10,7 +10,7 @@ use kujira_rs_testing::{
 };
 use unstake::{
     adapter::Contract,
-    controller::{DelegatesResponse, ExecuteMsg, OfferResponse, QueryMsg},
+    controller::{DelegatesResponse, ExecuteMsg, OfferResponse, QueryMsg, StatusResponse},
 };
 
 struct Contracts {
@@ -139,6 +139,17 @@ fn instantiate() {
 fn quote_initial() {
     // Check that when the contract is new, and there is no reserve fund, the quoted rate uses the max rate from the vault
     let (app, contracts) = setup(vec![]);
+
+    let status: StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
+        .unwrap();
+
+    assert_eq!(status.reserve_available, Uint128::zero());
+    assert_eq!(status.reserve_deployed, Uint128::zero());
+    assert_eq!(status.total_base, Uint128::zero());
+    assert_eq!(status.total_quote, Uint128::zero());
+
     let quote: OfferResponse = app
         .wrap()
         .query_wasm_smart(
@@ -176,6 +187,16 @@ fn quote_reserve_clamped() {
         &coins(200u128, "quote"),
     )
     .unwrap();
+
+    let status: StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
+        .unwrap();
+
+    assert_eq!(status.reserve_available, Uint128::from(200u128));
+    assert_eq!(status.reserve_deployed, Uint128::zero());
+    assert_eq!(status.total_base, Uint128::zero());
+    assert_eq!(status.total_quote, Uint128::zero());
 
     let quote: OfferResponse = app
         .wrap()
@@ -216,6 +237,16 @@ fn quote_unclamped() {
         &coins(20000u128, "quote"),
     )
     .unwrap();
+
+    let status: StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
+        .unwrap();
+
+    assert_eq!(status.reserve_available, Uint128::from(20000u128));
+    assert_eq!(status.reserve_deployed, Uint128::zero());
+    assert_eq!(status.total_base, Uint128::zero());
+    assert_eq!(status.total_quote, Uint128::zero());
 
     let quote: OfferResponse = app
         .wrap()
@@ -323,6 +354,16 @@ fn execute_offer() {
 
     let amount = Uint128::from(10000u128);
 
+    let status: StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
+        .unwrap();
+
+    assert_eq!(status.reserve_available, Uint128::from(20000u128));
+    assert_eq!(status.reserve_deployed, Uint128::zero());
+    assert_eq!(status.total_base, Uint128::zero());
+    assert_eq!(status.total_quote, Uint128::zero());
+
     app.execute_contract(
         api.addr_make("unstaker"),
         contracts.controller.clone(),
@@ -339,7 +380,7 @@ fn execute_offer() {
     let (delegate, _) = delegates.delegates[0].clone();
 
     let unstaker_balances = query_balances(&app, api.addr_make("unstaker"));
-    let controller_balances = query_balances(&app, contracts.controller);
+    let controller_balances = query_balances(&app, contracts.controller.clone());
     let delegate_balances = query_balances(&app, delegate);
     let provider_balances = query_balances(&app, contracts.provider);
     let ghost_balances = query_balances(&app, contracts.ghost.clone());
@@ -369,6 +410,16 @@ fn execute_offer() {
 
     // And ghost should have the borrowed amount deducted
     assert_eq!(ghost_balances, coins(100000000u128 - 10326u128, "quote"));
+
+    let status: StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller, &QueryMsg::Status {})
+        .unwrap();
+
+    assert_eq!(status.reserve_available, Uint128::from(20000u128 - 823));
+    assert_eq!(status.reserve_deployed, Uint128::from(823u128));
+    assert_eq!(status.total_base, Uint128::from(10000u128));
+    assert_eq!(status.total_quote, Uint128::zero());
 }
 
 #[test]
@@ -427,6 +478,16 @@ fn close_offer() {
     assert_eq!(delegates.delegates.len(), 1);
     let (delegate, _) = delegates.delegates[0].clone();
 
+    let status: StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
+        .unwrap();
+
+    assert_eq!(status.reserve_available, Uint128::from(20000u128 - 823));
+    assert_eq!(status.reserve_deployed, Uint128::from(823u128));
+    assert_eq!(status.total_base, Uint128::from(10000u128));
+    assert_eq!(status.total_quote, Uint128::zero());
+
     // 2 weeks later, ghost debt rate should have increased
     app.update_block(|x| {
         x.time = x.time.plus_days(14);
@@ -440,7 +501,7 @@ fn close_offer() {
     )
     .unwrap();
 
-    let controller_balances = query_balances(&app, contracts.controller);
+    let controller_balances = query_balances(&app, contracts.controller.clone());
     let delegate_balances = query_balances(&app, delegate);
     let provider_balances = query_balances(&app, contracts.provider);
     let ghost_balances = query_balances(&app, contracts.ghost.clone());
@@ -472,6 +533,18 @@ fn close_offer() {
     // And ghost should have the borrowed amount returned with interest
     // 10326 over 2 weeks at 100% = 1 / 26 = 397.
     assert_eq!(ghost_balances, coins(100000397u128, "quote"));
+
+    let status: StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller, &QueryMsg::Status {})
+        .unwrap();
+
+    // Remainder of the profit goes onto the reserve
+    assert_eq!(status.reserve_available, Uint128::from(20000u128 + 11));
+    assert_eq!(status.reserve_deployed, Uint128::zero());
+    assert_eq!(status.total_base, Uint128::from(10000u128));
+    // 10000 * 1.07375 for returned amount
+    assert_eq!(status.total_quote, Uint128::from(10737u128));
 }
 
 #[test]

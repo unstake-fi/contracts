@@ -10,8 +10,12 @@ use crate::{controller::InstantiateMsg, rates::Rates, ContractError};
 
 static BROKER: Item<Broker> = Item::new("broker");
 
-// The amount of the staked asset that we have as a reserve to pay excess interest
-static RESERVES: Item<Uint128> = Item::new("reserves");
+/// The amount of the staked asset that we have as a reserve to pay excess interest
+/// (available, deployed)
+static RESERVES: Item<(Uint128, Uint128)> = Item::new("reserves");
+
+// The total amount of (base, quote) tokens that have been (initiated, returned) from unbonding
+static TOTALS: Item<(Uint128, Uint128)> = Item::new("totals");
 
 static YEAR_SECONDS: u128 = 365 * 24 * 60 * 60;
 
@@ -46,9 +50,9 @@ impl Broker {
     }
 
     pub fn fund_reserves(storage: &mut dyn Storage, amount: Uint128) -> StdResult<()> {
-        let mut reserves = RESERVES.load(storage).unwrap_or_default();
+        let (mut reserves, deployed) = RESERVES.load(storage).unwrap_or_default();
         reserves += amount;
-        RESERVES.save(storage, &reserves)
+        RESERVES.save(storage, &(reserves, deployed))
     }
 
     pub fn update(&mut self, min_rate: Option<Decimal>, duration: Option<u64>) {
@@ -86,7 +90,7 @@ impl Broker {
         // in the following block, and remaining there for the whole period
         // This is something that we can look to relax in due course, but for now it provides an absolute guarantee of solvency
         let reserve_requirement = self.interest_amount(value, max_rate_shortfall);
-        let available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
+        let (available_reserve, _) = RESERVES.load(deps.storage).unwrap_or_default();
 
         // Calculate the total that we'll charge in up-front interest
         let fee = self.interest_amount(value, offer_rate);
@@ -98,7 +102,8 @@ impl Broker {
             // borrowing, so the actual amount of interest paid will be lower.
             // Therefore when the unbonded tokens return, we will have a surplus after the debt has been repaid.
             let offer = Offer {
-                amount: value.sub(fee),
+                unbond_amount,
+                offer_amount: value.sub(fee),
                 reserve_allocation: reserve_requirement,
                 fee,
             };
@@ -112,7 +117,8 @@ impl Broker {
         // Allocate the shortfall to fee, deduct from the amount returned
         let reserve_shortfall = reserve_requirement.sub(available_reserve);
         let offer = Offer {
-            amount: value.sub(fee).sub(reserve_shortfall),
+            unbond_amount,
+            offer_amount: value.sub(fee).sub(reserve_shortfall),
             reserve_allocation,
             fee: fee.add(reserve_shortfall),
         };
@@ -123,9 +129,15 @@ impl Broker {
     /// Commits the offer, deducts the reserve allocation from the total reservce, and returns
     /// messages that will instantiate the delegate contract with the debt tokens and ask tokens
     pub fn accept_offer<T: CustomQuery>(&self, deps: DepsMut<T>, offer: &Offer) -> StdResult<()> {
-        let mut available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
+        let (mut available_reserve, mut deployed) = RESERVES.load(deps.storage).unwrap_or_default();
         available_reserve -= offer.reserve_allocation;
-        RESERVES.save(deps.storage, &available_reserve)?;
+        deployed += offer.reserve_allocation;
+        RESERVES.save(deps.storage, &(available_reserve, deployed))?;
+
+        let (mut total_base, total_quote) = TOTALS.load(deps.storage).unwrap_or_default();
+        total_base += offer.unbond_amount;
+        TOTALS.save(deps.storage, &(total_base, total_quote))?;
+
         Ok(())
     }
 
@@ -140,10 +152,17 @@ impl Broker {
         returned_tokens: Uint128,
         protocol_fee: Decimal,
     ) -> Result<(Uint128, Uint128), ContractError> {
+        let (total_base, mut total_quote) = TOTALS.load(deps.storage).unwrap_or_default();
+        total_quote += returned_tokens
+            .checked_sub(offer.reserve_allocation)
+            .unwrap_or_default();
+        TOTALS.save(deps.storage, &(total_base, total_quote))?;
+
         let debt_rate = rates.vault_debt;
         let debt_amount = debt_tokens.mul_ceil(debt_rate);
         let mut returned_tokens = returned_tokens;
-        let mut available_reserve = RESERVES.load(deps.storage).unwrap_or_default();
+        let (mut available_reserve, mut deployed_reserve) =
+            RESERVES.load(deps.storage).unwrap_or_default();
 
         // We will always have enough to repay the GHOST debt -
         // the fee + reserve allocation will cover the potential shortfall
@@ -164,18 +183,20 @@ impl Broker {
         // Number two. Repay the solvency fund as much as possible
         let reserve_allocation = min(offer.reserve_allocation, returned_tokens);
         available_reserve += reserve_allocation;
+        deployed_reserve -= reserve_allocation;
         returned_tokens -= reserve_allocation;
 
         // Finally see what we can take as a fee. Consume whatever's left, in the case this is a big profit
 
         // Calculate the protocol revenue
         let fee_amount = returned_tokens.mul(protocol_fee);
+
         // And what's left to be allocated as a reserve
         let fee_reserve = returned_tokens.sub(fee_amount);
 
         available_reserve += fee_reserve;
 
-        RESERVES.save(deps.storage, &available_reserve)?;
+        RESERVES.save(deps.storage, &(available_reserve, deployed_reserve))?;
 
         Ok((debt_amount, fee_amount))
     }
@@ -191,8 +212,11 @@ impl Broker {
 /// The details of an offer returned by the Broker
 #[cw_serde]
 pub struct Offer {
+    /// The amount requested for unbonding
+    pub unbond_amount: Uint128,
+
     /// The amount that we can safely borrow from GHOST and return to the Unstaker
-    pub amount: Uint128,
+    pub offer_amount: Uint128,
 
     /// The amount of the offer amount that has been retained as a fee to cover interest.
     /// amount + fee_amount == unbond_amount * redemption_rate
@@ -200,4 +224,29 @@ pub struct Offer {
 
     /// The amount of reserves allocated to this offer
     pub reserve_allocation: Uint128,
+}
+
+#[cw_serde]
+pub struct Status {
+    /// The total amount of base asset that has been requested for unbonding
+    pub total_base: Uint128,
+    /// The total amount of quote asset that has been returned from unbonding
+    pub total_quote: Uint128,
+    /// The amount of reserve currently available for new Unstakes
+    pub reserve_available: Uint128,
+    /// The amount of reserve currently deployed in in-flight Unstakes
+    pub reserve_deployed: Uint128,
+}
+
+impl Status {
+    pub fn load(storage: &dyn Storage) -> Self {
+        let (total_base, total_quote) = TOTALS.load(storage).unwrap_or_default();
+        let (reserve_available, reserve_deployed) = RESERVES.load(storage).unwrap_or_default();
+        Self {
+            total_base,
+            total_quote,
+            reserve_available,
+            reserve_deployed,
+        }
+    }
 }
