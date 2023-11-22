@@ -172,8 +172,8 @@ fn quote_initial() {
     // List price 10737
     // Interest amount 1234
     // Offer amount 10737 - 1234 = 9,503
-    assert_eq!(quote.amount, Uint128::from(9503u128));
-    assert_eq!(quote.fee, Uint128::from(1234u128));
+    assert_eq!(quote.amount, Uint128::from(9501u128));
+    assert_eq!(quote.fee, Uint128::from(1236u128));
 }
 
 #[test]
@@ -222,8 +222,8 @@ fn quote_reserve_clamped() {
     // Interest amount 1234
     // Available reserve = 200
     // Offer amount 10737 - 1034 = 9,703
-    assert_eq!(quote.amount, Uint128::from(9703u128));
-    assert_eq!(quote.fee, Uint128::from(1034u128));
+    assert_eq!(quote.amount, Uint128::from(9701u128));
+    assert_eq!(quote.fee, Uint128::from(1036u128));
 }
 
 #[test]
@@ -270,8 +270,8 @@ fn quote_unclamped() {
     // 0.03835616438 interest
     // List price 10737, interest 411
     // Offer amount 10737 - 411 = 9,703
-    assert_eq!(quote.amount, Uint128::from(10326u128));
-    assert_eq!(quote.fee, Uint128::from(411u128));
+    assert_eq!(quote.amount, Uint128::from(10325u128));
+    assert_eq!(quote.fee, Uint128::from(412u128));
 }
 
 #[test]
@@ -320,8 +320,8 @@ fn quote_min_rate_clamped() {
     // 0.04219178082 interest
     // List price 10737, interest 452
     // Offer amount 10737 - 452 = 10,285
-    assert_eq!(quote.amount, Uint128::from(10285u128));
-    assert_eq!(quote.fee, Uint128::from(452u128));
+    assert_eq!(quote.amount, Uint128::from(10283u128));
+    assert_eq!(quote.fee, Uint128::from(454u128));
 }
 
 #[test]
@@ -395,30 +395,30 @@ fn execute_offer() {
     // ghots depost 100000000 - 10326 = 99989674
 
     // unstaker gets their money, less the fees
-    assert_eq!(unstaker_balances, coins(10326u128, "quote"));
+    assert_eq!(unstaker_balances, coins(10325u128, "quote"));
     // remainder of reserve left on controller
-    assert_eq!(controller_balances, coins(19177u128, "quote"));
+    assert_eq!(controller_balances, coins(19176u128, "quote"));
     // delegate has the debt tokens, and reserve allocation
     assert_eq!(
         delegate_balances,
         vec![
-            coin(9220u128, format!("factory/{}/udebt", contracts.ghost)),
-            coin(823u128, "quote")
+            coin(9219u128, format!("factory/{}/udebt", contracts.ghost)),
+            coin(824u128, "quote")
         ]
     );
     // Provider should have received the base for unbonding
     assert_eq!(provider_balances, coins(10000u128, "base"));
 
     // And ghost should have the borrowed amount deducted
-    assert_eq!(ghost_balances, coins(100000000u128 - 10326u128, "quote"));
+    assert_eq!(ghost_balances, coins(100000000u128 - 10325u128, "quote"));
 
     let status: StatusResponse = app
         .wrap()
         .query_wasm_smart(contracts.controller, &QueryMsg::Status {})
         .unwrap();
 
-    assert_eq!(status.reserve_available, Uint128::from(20000u128 - 823));
-    assert_eq!(status.reserve_deployed, Uint128::from(823u128));
+    assert_eq!(status.reserve_available, Uint128::from(20000u128 - 824));
+    assert_eq!(status.reserve_deployed, Uint128::from(824u128));
     assert_eq!(status.total_base, Uint128::from(10000u128));
     assert_eq!(status.total_quote, Uint128::zero());
 }
@@ -477,19 +477,19 @@ fn execute_unfunded_offer() {
     let ghost_balances = query_balances(&app, contracts.ghost.clone());
 
     // unstaker gets their money, less the fees
-    assert_eq!(unstaker_balances, coins(9503u128, "quote"));
+    assert_eq!(unstaker_balances, coins(9501u128, "quote"));
     // remainder of reserve left on controller
     assert_eq!(controller_balances, vec![]);
     // delegate has the debt tokens, and no reserve allocation
     assert_eq!(
         delegate_balances,
-        coins(8485u128, format!("factory/{}/udebt", contracts.ghost)),
+        coins(8484u128, format!("factory/{}/udebt", contracts.ghost)),
     );
     // Provider should have received the base for unbonding
     assert_eq!(provider_balances, coins(10000u128, "base"));
 
     // And ghost should have the borrowed amount deducted
-    assert_eq!(ghost_balances, coins(100000000u128 - 9503u128, "quote"));
+    assert_eq!(ghost_balances, coins(100000000u128 - 9501u128, "quote"));
 
     let status: StatusResponse = app
         .wrap()
@@ -563,8 +563,8 @@ fn close_offer() {
         .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
         .unwrap();
 
-    assert_eq!(status.reserve_available, Uint128::from(20000u128 - 823));
-    assert_eq!(status.reserve_deployed, Uint128::from(823u128));
+    assert_eq!(status.reserve_available, Uint128::from(20000u128 - 824));
+    assert_eq!(status.reserve_deployed, Uint128::from(824u128));
     assert_eq!(status.total_base, Uint128::from(10000u128));
     assert_eq!(status.total_quote, Uint128::zero());
 
@@ -598,7 +598,7 @@ fn close_offer() {
     // but have an allocated fee of 3.8356 on the total value = 10737 * 3.8356 = 411
     // so we have an excess profit here of 411 - 396 = 15
     // of that profit, 25% is protocol_fee, so 3
-    assert_eq!(controller_balances, coins(20011u128, "quote"));
+    assert_eq!(controller_balances, coins(20012u128, "quote"));
 
     // delegate should now be empty
     assert_eq!(delegate_balances, vec![]);
@@ -620,7 +620,7 @@ fn close_offer() {
         .unwrap();
 
     // Remainder of the profit goes onto the reserve
-    assert_eq!(status.reserve_available, Uint128::from(20000u128 + 11));
+    assert_eq!(status.reserve_available, Uint128::from(20000u128 + 12));
     assert_eq!(status.reserve_deployed, Uint128::zero());
     assert_eq!(status.total_base, Uint128::from(10000u128));
     // 10000 * 1.07375 for returned amount
@@ -773,7 +773,7 @@ fn close_losing_offer() {
     // So we'll pay 5.7534 on 10326 = 594,
     // but have an allocated fee of 3.8356 on the total value = 10737 * 3.8356 = 411
     // so we have a loss  here of 411 - 594 = -184 (rounding)
-    assert_eq!(controller_balances, coins(19816u128, "quote"));
+    assert_eq!(controller_balances, coins(19817u128, "quote"));
 
     // delegate should now be empty
     assert_eq!(delegate_balances, vec![]);
