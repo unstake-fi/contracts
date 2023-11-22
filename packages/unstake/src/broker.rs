@@ -3,21 +3,21 @@ use cosmwasm_std::{CustomQuery, Decimal, Deps, DepsMut, StdResult, Storage, Uint
 use cw_storage_plus::Item;
 use std::{
     cmp::{max, min},
-    ops::{Add, Div, Mul, Sub},
+    ops::{Add, Sub},
 };
 
 use crate::{controller::InstantiateMsg, rates::Rates, ContractError};
 
-static BROKER: Item<Broker> = Item::new("broker");
+const BROKER: Item<Broker> = Item::new("broker");
 
 /// The amount of the staked asset that we have as a reserve to pay excess interest
 /// (available, deployed)
-static RESERVES: Item<(Uint128, Uint128)> = Item::new("reserves");
+const RESERVES: Item<(Uint128, Uint128)> = Item::new("reserves");
 
 // The total amount of (base, quote) tokens that have been (initiated, returned) from unbonding
-static TOTALS: Item<(Uint128, Uint128)> = Item::new("totals");
+const TOTALS: Item<(Uint128, Uint128)> = Item::new("totals");
 
-static YEAR_SECONDS: u128 = 365 * 24 * 60 * 60;
+const YEAR_SECONDS: u128 = 365 * 24 * 60 * 60;
 
 /// The Broker is responsible for managing protocol reserves, and making Unstaking offers
 #[cw_serde]
@@ -76,14 +76,14 @@ impl Broker {
         let max_rate = rates.vault_max_interest;
 
         // Calculate the value of the Unstaked amount, in terms of the underlying asset. I.e. the max amount we'll need to borrow
-        let value = unbond_amount.mul(rates.provider_redemption);
+        let value = unbond_amount.mul_floor(rates.provider_redemption);
 
         // For now we'll naively assume that the borrow rate will stay fixed for the duration of the unbond.
         // During periods of high interest, Unstakes will cost more and a user will have to wait for the rate
         // to fall if they want a more favourable rate.
         let offer_rate = max(current_rate, self.min_rate);
         let max_rate_shortfall = max_rate
-            .checked_sub(current_rate)
+            .checked_sub(offer_rate)
             .map_err(ContractError::RateOverflow)?;
 
         // Ensure we have enough reserves available to cover the max potential shortfall - ie the lend APR spiking to max
@@ -128,10 +128,16 @@ impl Broker {
 
     /// Commits the offer, deducts the reserve allocation from the total reservce, and returns
     /// messages that will instantiate the delegate contract with the debt tokens and ask tokens
-    pub fn accept_offer<T: CustomQuery>(&self, deps: DepsMut<T>, offer: &Offer) -> StdResult<()> {
+    pub fn accept_offer<T: CustomQuery>(
+        &self,
+        deps: DepsMut<T>,
+        offer: &Offer,
+    ) -> Result<(), ContractError> {
         let (mut available_reserve, mut deployed) = RESERVES.load(deps.storage).unwrap_or_default();
-        available_reserve -= offer.reserve_allocation;
-        deployed += offer.reserve_allocation;
+        available_reserve = available_reserve
+            .checked_sub(offer.reserve_allocation)
+            .map_err(|_| ContractError::InsufficentReserves {})?;
+        deployed = deployed.checked_add(offer.reserve_allocation)?;
         RESERVES.save(deps.storage, &(available_reserve, deployed))?;
 
         let (mut total_base, total_quote) = TOTALS.load(deps.storage).unwrap_or_default();
@@ -149,7 +155,7 @@ impl Broker {
         rates: &Rates,
         offer: &Offer,
         debt_tokens: Uint128,
-        returned_tokens: Uint128,
+        mut returned_tokens: Uint128,
         protocol_fee: Decimal,
     ) -> Result<(Uint128, Uint128), ContractError> {
         let (total_base, mut total_quote) = TOTALS.load(deps.storage).unwrap_or_default();
@@ -160,7 +166,6 @@ impl Broker {
 
         let debt_rate = rates.vault_debt;
         let debt_amount = debt_tokens.mul_ceil(debt_rate);
-        let mut returned_tokens = returned_tokens;
         let (mut available_reserve, mut deployed_reserve) =
             RESERVES.load(deps.storage).unwrap_or_default();
 
@@ -189,7 +194,7 @@ impl Broker {
         // Finally see what we can take as a fee. Consume whatever's left, in the case this is a big profit
 
         // Calculate the protocol revenue
-        let fee_amount = returned_tokens.mul(protocol_fee);
+        let fee_amount = returned_tokens.mul_floor(protocol_fee);
 
         // And what's left to be allocated as a reserve
         let fee_reserve = returned_tokens.sub(fee_amount);
@@ -202,10 +207,10 @@ impl Broker {
     }
 
     fn interest_amount(&self, amount: Uint128, rate: Decimal) -> Uint128 {
-        amount
-            .mul(rate)
-            .mul(Uint128::from(self.duration))
-            .div(Uint128::from(YEAR_SECONDS))
+        amount.mul_ceil(rate).mul_ceil(Decimal::from_ratio(
+            Uint128::from(self.duration),
+            Uint128::from(YEAR_SECONDS),
+        ))
     }
 }
 
