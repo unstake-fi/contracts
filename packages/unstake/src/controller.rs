@@ -5,7 +5,7 @@ use crate::{
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Coin, Decimal, Timestamp, Uint128};
-use kujira::Denom;
+use kujira::{CallbackMsg, Denom};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -40,10 +40,7 @@ pub enum ExecuteMsg {
     /// Called after the GHOST withdrawal has been made.
     /// At this point, the only funds on the contract will be the received debt tokens from GHOST,
     /// and the received Ask tokens from the user
-    UnstakeCallback {
-        offer: Offer,
-        unbond_amount: Coin,
-    },
+    Callback(CallbackMsg),
 
     /// Called by a delegate contract when the unbonding process is complete.
     /// Returns the unbonded tokens, the debt tokens for ghost, and the corresponding offer
@@ -67,6 +64,11 @@ pub enum ExecuteMsg {
         min_rate: Option<Decimal>,
         duration: Option<u64>,
     },
+}
+
+#[cw_serde]
+pub enum CallbackType {
+    Unstake { offer: Offer, unbond_amount: Coin },
 }
 
 #[cw_serde]

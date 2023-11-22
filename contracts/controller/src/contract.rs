@@ -4,19 +4,20 @@ use crate::config::Config;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coin, ensure_eq, to_json_binary, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Env,
-    MessageInfo, Order, Response, StdError, StdResult, Timestamp, Uint128, WasmMsg,
+    coin, ensure_eq, to_json_binary, wasm_execute, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut,
+    Env, MessageInfo, Order, Response, StdError, StdResult, Timestamp, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
 use kujira::{Denom, KujiraMsg, KujiraQuery};
+use serde::Serialize;
 use unstake::broker::Status;
 use unstake::controller::{
-    ConfigResponse, DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg,
-    RatesResponse, StatusResponse,
+    CallbackType, ConfigResponse, DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse,
+    QueryMsg, RatesResponse, StatusResponse,
 };
-use unstake::helpers::{predict_address, Controller};
+use unstake::helpers::predict_address;
 use unstake::rates::Rates;
 use unstake::{broker::Broker, ContractError};
 
@@ -60,74 +61,78 @@ pub fn execute(
             };
             broker.accept_offer(deps, &offer)?;
             let send_msg = config.offer_denom.send(&info.sender, &offer.offer_amount);
-            let borrow_msg = vault_borrow_msg(&config.vault_address, offer.offer_amount)?;
-            let callback_msg = Controller(env.contract.address).call(
-                ExecuteMsg::UnstakeCallback {
-                    unbond_amount: config.ask_denom.coin(&amount),
+            let borrow_msg = vault_borrow_msg(
+                &config.vault_address,
+                offer.offer_amount,
+                Some(&CallbackType::Unstake {
                     offer,
-                },
-                vec![],
+                    unbond_amount: config.ask_denom.coin(&amount),
+                }),
             )?;
 
             Ok(Response::default()
                 .add_message(borrow_msg)
-                .add_message(send_msg)
-                .add_message(callback_msg))
+                .add_message(send_msg))
         }
-        ExecuteMsg::UnstakeCallback {
-            unbond_amount,
-            offer,
-        } => {
-            ensure_eq!(
-                info.sender,
-                env.contract.address,
-                ContractError::Unauthorized {}
-            );
-            let balances = deps
-                .querier
-                .query_all_balances(env.contract.address.clone())?;
+        ExecuteMsg::Callback(cb) => {
+            let cb_type: CallbackType = cb.deserialize_callback()?;
+            match cb_type {
+                CallbackType::Unstake {
+                    offer,
+                    unbond_amount,
+                } => {
+                    ensure_eq!(
+                        info.sender,
+                        config.vault_address,
+                        ContractError::Unauthorized {}
+                    );
+                    let balances = deps
+                        .querier
+                        .query_all_balances(env.contract.address.clone())?;
 
-            let mut funds = NativeBalance(vec![]);
+                    let mut funds = NativeBalance(vec![]);
 
-            for Coin { denom, amount } in balances {
-                if denom == config.offer_denom.to_string() {
-                    funds.add_assign(coin(offer.reserve_allocation.u128(), denom))
-                } else {
-                    funds.add_assign(coin(amount.u128(), denom))
+                    for Coin { denom, amount } in balances {
+                        if denom == config.offer_denom.to_string() {
+                            funds.add_assign(coin(offer.reserve_allocation.u128(), denom))
+                        } else {
+                            funds.add_assign(coin(amount.u128(), denom))
+                        }
+                    }
+
+                    let label: String = format!(
+                        "Unstake.fi delegate {}/{}",
+                        env.block.height,
+                        env.transaction
+                            .as_ref()
+                            .map(|x| x.index)
+                            .unwrap_or_default()
+                    );
+
+                    let (address, salt) =
+                        predict_address(config.delegate_code_id, &label, &deps.as_ref(), &env)?;
+
+                    let msg = unstake::delegate::InstantiateMsg {
+                        unbond_amount,
+                        controller: env.contract.address.clone(),
+                        offer: offer.clone(),
+                        adapter: config.adapter,
+                    };
+
+                    let instantiate: WasmMsg = WasmMsg::Instantiate2 {
+                        admin: Some(env.contract.address.into()),
+                        code_id: config.delegate_code_id,
+                        label,
+                        msg: to_json_binary(&msg)?,
+                        funds: funds.into_vec(),
+                        salt,
+                    };
+
+                    DELEGATES.save(deps.storage, address, &env.block.time)?;
+
+                    Ok(Response::default().add_message(instantiate))
                 }
             }
-
-            let label: String = format!(
-                "Unstake.fi delegate {}/{}",
-                env.block.height,
-                env.transaction
-                    .as_ref()
-                    .map(|x| x.index)
-                    .unwrap_or_default()
-            );
-
-            let (address, salt) =
-                predict_address(config.delegate_code_id, &label, &deps.as_ref(), &env)?;
-
-            let msg = unstake::delegate::InstantiateMsg {
-                unbond_amount,
-                controller: env.contract.address.clone(),
-                offer: offer.clone(),
-                adapter: config.adapter,
-            };
-
-            let instantiate: WasmMsg = WasmMsg::Instantiate2 {
-                admin: Some(env.contract.address.into()),
-                code_id: config.delegate_code_id,
-                label,
-                msg: to_json_binary(&msg)?,
-                funds: funds.into_vec(),
-                salt,
-            };
-
-            DELEGATES.save(deps.storage, address, &env.block.time)?;
-
-            Ok(Response::default().add_message(instantiate))
         }
         ExecuteMsg::Complete { offer } => {
             DELEGATES
@@ -231,33 +236,37 @@ pub fn migrate(_deps: DepsMut<KujiraQuery>, _env: Env, _msg: ()) -> StdResult<Re
     Ok(Response::default())
 }
 
-pub fn vault_borrow_msg<T>(addr: &Addr, amount: Uint128) -> StdResult<CosmosMsg<T>> {
-    Ok(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: addr.to_string(),
-        msg: to_json_binary(&kujira_ghost::receipt_vault::ExecuteMsg::Borrow(
-            kujira_ghost::receipt_vault::BorrowMsg {
-                amount,
-                callback: None,
-            },
-        ))?,
-        funds: vec![],
-    }))
+pub fn vault_borrow_msg<T>(
+    addr: &Addr,
+    amount: Uint128,
+    callback: Option<&impl Serialize>,
+) -> StdResult<CosmosMsg<T>> {
+    wasm_execute(
+        addr,
+        &kujira_ghost::receipt_vault::ExecuteMsg::Borrow(kujira_ghost::receipt_vault::BorrowMsg {
+            amount,
+            callback: callback
+                .map(|c| to_json_binary(c).map(Into::into))
+                .transpose()?,
+        }),
+        vec![],
+    )
+    .map(Into::into)
 }
 
 pub fn vault_repay_msg<T>(addr: &Addr, coins: Vec<Coin>) -> StdResult<CosmosMsg<T>> {
-    Ok(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: addr.to_string(),
-        msg: to_json_binary(&kujira_ghost::receipt_vault::ExecuteMsg::Repay(
-            kujira_ghost::receipt_vault::RepayMsg { callback: None },
-        ))?,
-        funds: coins,
-    }))
+    wasm_execute(
+        addr,
+        &kujira_ghost::receipt_vault::ExecuteMsg::Repay(kujira_ghost::receipt_vault::RepayMsg {
+            callback: None,
+        }),
+        coins,
+    )
+    .map(Into::into)
 }
 
 pub fn amount(denom: &Denom, funds: Vec<Coin>) -> StdResult<Uint128> {
-    let coin = funds
-        .iter()
-        .find(|d| &Denom::from(d.denom.clone()) == denom);
+    let coin = funds.iter().find(|d| d.denom == denom.to_string());
     match coin {
         None => Err(StdError::not_found(denom.to_string())),
         Some(Coin { amount, .. }) => Ok(*amount),
