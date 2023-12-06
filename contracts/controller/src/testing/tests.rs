@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use cosmwasm_std::{coin, coins, to_json_binary, Addr, Coin, Decimal, Uint128};
+use cosmwasm_std::{coin, coins, Addr, Coin, Decimal, Uint128};
 use cw_multi_test::{ContractWrapper, Executor};
 use kujira::{fee_address, Denom, HumanPrice};
 use kujira_ghost::common::OracleType;
@@ -8,10 +8,7 @@ use kujira_rs_testing::{
     api::MockApiBech32,
     mock::{mock_app, CustomApp},
 };
-use unstake::{
-    adapter::Contract,
-    controller::{DelegatesResponse, ExecuteMsg, OfferResponse, QueryMsg, StatusResponse},
-};
+use unstake::controller::{DelegatesResponse, ExecuteMsg, OfferResponse, QueryMsg, StatusResponse};
 
 struct Contracts {
     pub ghost: Addr,
@@ -80,12 +77,6 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
         )
         .unwrap();
 
-    let unbond_start_msg =
-        to_json_binary(&crate::testing::provider::ExecuteMsg::QueueUnbond {}).unwrap();
-
-    let unbond_end_msg =
-        to_json_binary(&crate::testing::provider::ExecuteMsg::WithdrawUnbonded {}).unwrap();
-
     let controller_address = app
         .instantiate_contract(
             controller_code_id,
@@ -98,11 +89,7 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
                 vault_address: vault_address.clone(),
                 ask_denom: Denom::from("base"),
                 offer_denom: Denom::from("quote"),
-                adapter: unstake::adapter::Adapter::Contract(Contract {
-                    address: provider_address.clone(),
-                    unbond_start_msg,
-                    unbond_end_msg,
-                }),
+                adapter: unstake::adapter::Adapter::Eris(provider_address.clone().into()),
                 // 2 weeks
                 unbonding_duration: 2 * 7 * 24 * 60 * 60,
                 // 3%

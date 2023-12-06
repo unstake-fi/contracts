@@ -1,6 +1,6 @@
 use cosmwasm_std::{Addr, CustomQuery, Decimal, QuerierWrapper, StdResult};
 
-use crate::adapter::Adapter;
+use crate::adapter::{Adapter, Unstake};
 
 pub struct Rates {
     pub vault_debt: Decimal,
@@ -20,9 +20,7 @@ impl Rates {
             &kujira_ghost::receipt_vault::QueryMsg::Status {},
         )?;
 
-        let provider_redemption = match adapter {
-            Adapter::Contract(c) => c.redemption_rate(query)?,
-        };
+        let provider_redemption = adapter.redemption_rate(query)?;
 
         // TODO: Publish & use new interest rate params
         // let rates: kujira_ghost::receipt_vault::InterestParamsResponse = query.query_wasm_smart(

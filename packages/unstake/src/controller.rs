@@ -124,12 +124,7 @@ pub struct ConfigResponse {
     pub vault_address: Addr,
     pub offer_denom: Denom,
     pub ask_denom: Denom,
-    pub adapter: AdapterResponse,
-}
-
-#[cw_serde]
-pub enum AdapterResponse {
-    Contract(ContractResponse),
+    pub adapter: Adapter,
 }
 
 #[cw_serde]
@@ -160,18 +155,6 @@ impl From<Rates> for RatesResponse {
             vault_interest: value.vault_interest,
             vault_max_interest: value.vault_max_interest,
             provider_redemption: value.provider_redemption,
-        }
-    }
-}
-
-impl From<Adapter> for AdapterResponse {
-    fn from(value: Adapter) -> Self {
-        match value {
-            Adapter::Contract(contract) => AdapterResponse::Contract(ContractResponse {
-                address: contract.address,
-                unbond_start_msg: contract.unbond_start_msg,
-                unbond_end_msg: contract.unbond_end_msg,
-            }),
         }
     }
 }
