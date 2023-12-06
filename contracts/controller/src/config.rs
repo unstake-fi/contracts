@@ -83,7 +83,7 @@ impl From<Config> for ConfigResponse {
             vault_address: value.vault_address,
             offer_denom: value.offer_denom,
             ask_denom: value.ask_denom,
-            adapter: value.adapter.into(),
+            adapter: value.adapter,
         }
     }
 }

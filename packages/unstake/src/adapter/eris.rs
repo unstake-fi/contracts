@@ -5,7 +5,7 @@ use cosmwasm_std::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::adapter::Unstake;
+use super::interface::Unstake;
 #[cw_serde]
 pub struct Eris(Addr);
 

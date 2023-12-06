@@ -37,11 +37,14 @@ impl Rates {
     }
 }
 
-impl Into<String> for Rates {
-    fn into(self) -> String {
+impl From<Rates> for String {
+    fn from(value: Rates) -> Self {
         format!(
             "vault_debt:{},vault_interest:{},vault_max_interest:{},provider_redemption:{}",
-            self.vault_debt, self.vault_interest, self.vault_max_interest, self.provider_redemption
+            value.vault_debt,
+            value.vault_interest,
+            value.vault_max_interest,
+            value.provider_redemption
         )
     }
 }

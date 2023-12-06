@@ -231,11 +231,11 @@ pub struct Offer {
     pub reserve_allocation: Uint128,
 }
 
-impl Into<String> for Offer {
-    fn into(self) -> String {
+impl From<Offer> for String {
+    fn from(value: Offer) -> Self {
         format!(
             "unbond_amount:{},offer_amount:{},fee:{},reserve_allocation:{}",
-            self.unbond_amount, self.offer_amount, self.fee, self.reserve_allocation
+            value.unbond_amount, value.offer_amount, value.fee, value.reserve_allocation
         )
     }
 }

@@ -12,4 +12,4 @@ The Instant Unstaking protocol for the interchain, only on @TeamKujira. Don’t 
 ### Mainnet
 
 - controller: code id `201`
-- delegate: code id `202`
+- delegate: code id `203`
