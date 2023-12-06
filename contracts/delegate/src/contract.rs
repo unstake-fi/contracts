@@ -1,6 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{ensure_eq, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{
+    ensure_eq, Addr, Binary, Coins, Deps, DepsMut, Env, Event, MessageInfo, Response,
+};
 use cw_storage_plus::Item;
 use kujira::{KujiraMsg, KujiraQuery};
 use unstake::adapter::Adapter;
@@ -41,6 +43,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::Complete {} => {
             let adapter = ADAPTER.load(deps.storage)?;
+
             match adapter {
                 Adapter::Contract(c) => {
                     let claim_msg = c.unbond_end();
@@ -61,10 +64,22 @@ pub fn execute(
             );
             let funds = deps.querier.query_all_balances(env.contract.address)?;
             let offer = OFFER.load(deps.storage)?;
-            let controller_msg = Controller(CONTROLLER.load(deps.storage)?)
-                .call(unstake::controller::ExecuteMsg::Complete { offer }, funds)?;
+            let controller_msg = Controller(CONTROLLER.load(deps.storage)?).call(
+                unstake::controller::ExecuteMsg::Complete {
+                    offer: offer.clone(),
+                },
+                funds.clone(),
+            )?;
+            let event: Event = Event::new("unstake/delegate/callback")
+                .add_attribute("offer", offer)
+                .add_attribute(
+                    "funds",
+                    Coins::try_from(funds).unwrap_or_default().to_string(),
+                );
 
-            Ok(Response::default().add_message(controller_msg))
+            Ok(Response::default()
+                .add_event(event)
+                .add_message(controller_msg))
         }
     }
 }

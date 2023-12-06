@@ -5,7 +5,7 @@ use crate::config::Config;
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     coin, ensure_eq, to_json_binary, wasm_execute, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut,
-    Env, MessageInfo, Order, Response, StdError, StdResult, Timestamp, Uint128, WasmMsg,
+    Env, Event, MessageInfo, Order, Response, StdError, StdResult, Timestamp, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
@@ -65,12 +65,18 @@ pub fn execute(
                 &config.vault_address,
                 offer.offer_amount,
                 Some(&CallbackType::Unstake {
-                    offer,
+                    offer: offer.clone(),
                     unbond_amount: config.ask_denom.coin(&amount),
                 }),
             )?;
 
+            let event = Event::new("unstake/controller/unstake")
+                .add_attribute("amount", amount)
+                .add_attribute("rates", rates)
+                .add_attribute("offer", offer);
+
             Ok(Response::default()
+                .add_event(event)
                 .add_message(borrow_msg)
                 .add_message(send_msg))
         }
@@ -113,7 +119,7 @@ pub fn execute(
                         predict_address(config.delegate_code_id, &label, &deps.as_ref(), &env)?;
 
                     let msg = unstake::delegate::InstantiateMsg {
-                        unbond_amount,
+                        unbond_amount: unbond_amount.clone(),
                         controller: env.contract.address.clone(),
                         offer: offer.clone(),
                         adapter: config.adapter,
@@ -128,9 +134,15 @@ pub fn execute(
                         salt,
                     };
 
-                    DELEGATES.save(deps.storage, address, &env.block.time)?;
+                    DELEGATES.save(deps.storage, address.clone(), &env.block.time)?;
 
-                    Ok(Response::default().add_message(instantiate))
+                    let event: Event = Event::new("unstake/controller/callback/unstake")
+                        .add_attribute("unbond_amount", unbond_amount.amount)
+                        .add_attribute("delegate", address);
+
+                    Ok(Response::default()
+                        .add_event(event)
+                        .add_message(instantiate))
                 }
             }
         }
@@ -177,7 +189,12 @@ pub fn execute(
                 )
             }
 
-            Ok(Response::default().add_messages(msgs))
+            let event: Event = Event::new("unstake/controller/complete")
+                .add_attribute("returned_tokens", returned_tokens)
+                .add_attribute("repay_amount", repay_amount)
+                .add_attribute("protocol_fee_amount", protocol_fee_amount);
+
+            Ok(Response::default().add_event(event).add_messages(msgs))
         }
         ExecuteMsg::Fund {} => {
             let amount = must_pay(&info, config.offer_denom.as_ref())?;

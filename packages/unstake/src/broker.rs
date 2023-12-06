@@ -231,6 +231,15 @@ pub struct Offer {
     pub reserve_allocation: Uint128,
 }
 
+impl Into<String> for Offer {
+    fn into(self) -> String {
+        format!(
+            "unbond_amount:{},offer_amount:{},fee:{},reserve_allocation:{}",
+            self.unbond_amount, self.offer_amount, self.fee, self.reserve_allocation
+        )
+    }
+}
+
 #[cw_serde]
 pub struct Status {
     /// The total amount of base asset that has been requested for unbonding
