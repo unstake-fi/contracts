@@ -80,9 +80,6 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
         )
         .unwrap();
 
-    let redemption_rate_query =
-        to_json_binary(&unstake::adapter::ContractQueryMsg::State {}).unwrap();
-
     let unbond_start_msg =
         to_json_binary(&crate::testing::provider::ExecuteMsg::QueueUnbond {}).unwrap();
 
@@ -103,7 +100,6 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
                 offer_denom: Denom::from("quote"),
                 adapter: unstake::adapter::Adapter::Contract(Contract {
                     address: provider_address.clone(),
-                    redemption_rate_query,
                     unbond_start_msg,
                     unbond_end_msg,
                 }),
@@ -117,6 +113,7 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
             None,
         )
         .unwrap();
+
     (
         app,
         Contracts {
@@ -368,7 +365,10 @@ fn execute_offer() {
     app.execute_contract(
         api.addr_make("unstaker"),
         contracts.controller.clone(),
-        &ExecuteMsg::Unstake { max_fee: amount },
+        &ExecuteMsg::Unstake {
+            callback: None,
+            max_fee: amount,
+        },
         &coins(10000u128, "base"),
     )
     .unwrap();
@@ -458,7 +458,10 @@ fn execute_unfunded_offer() {
     app.execute_contract(
         api.addr_make("unstaker"),
         contracts.controller.clone(),
-        &ExecuteMsg::Unstake { max_fee: amount },
+        &ExecuteMsg::Unstake {
+            callback: None,
+            max_fee: amount,
+        },
         &coins(10000u128, "base"),
     )
     .unwrap();
@@ -546,7 +549,10 @@ fn close_offer() {
     app.execute_contract(
         api.addr_make("unstaker"),
         contracts.controller.clone(),
-        &ExecuteMsg::Unstake { max_fee: amount },
+        &ExecuteMsg::Unstake {
+            callback: None,
+            max_fee: amount,
+        },
         &coins(10000u128, "base"),
     )
     .unwrap();
@@ -670,7 +676,10 @@ fn close_early_offer() {
     app.execute_contract(
         api.addr_make("unstaker"),
         contracts.controller.clone(),
-        &ExecuteMsg::Unstake { max_fee: amount },
+        &ExecuteMsg::Unstake {
+            callback: None,
+            max_fee: amount,
+        },
         &coins(10000u128, "base"),
     )
     .unwrap();
@@ -739,7 +748,10 @@ fn close_losing_offer() {
     app.execute_contract(
         api.addr_make("unstaker"),
         contracts.controller.clone(),
-        &ExecuteMsg::Unstake { max_fee: amount },
+        &ExecuteMsg::Unstake {
+            callback: None,
+            max_fee: amount,
+        },
         &coins(10000u128, "base"),
     )
     .unwrap();

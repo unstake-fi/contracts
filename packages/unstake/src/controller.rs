@@ -5,7 +5,7 @@ use crate::{
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Coin, Decimal, Timestamp, Uint128};
-use kujira::{CallbackMsg, Denom};
+use kujira::{CallbackData, CallbackMsg, Denom};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -35,6 +35,7 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     Unstake {
         max_fee: Uint128,
+        callback: Option<CallbackData>,
     },
 
     /// Called after the GHOST withdrawal has been made.
@@ -44,9 +45,7 @@ pub enum ExecuteMsg {
 
     /// Called by a delegate contract when the unbonding process is complete.
     /// Returns the unbonded tokens, the debt tokens for ghost, and the corresponding offer
-    Complete {
-        offer: Offer,
-    },
+    Complete { offer: Offer },
 
     /// Adds funds to the reserve
     Fund {},
@@ -136,7 +135,6 @@ pub enum AdapterResponse {
 #[cw_serde]
 pub struct ContractResponse {
     pub address: Addr,
-    pub redemption_rate_query: Binary,
     pub unbond_start_msg: Binary,
     pub unbond_end_msg: Binary,
 }
@@ -171,7 +169,6 @@ impl From<Adapter> for AdapterResponse {
         match value {
             Adapter::Contract(contract) => AdapterResponse::Contract(ContractResponse {
                 address: contract.address,
-                redemption_rate_query: contract.redemption_rate_query,
                 unbond_start_msg: contract.unbond_start_msg,
                 unbond_end_msg: contract.unbond_end_msg,
             }),

@@ -13,7 +13,6 @@ pub enum Adapter {
 #[cw_serde]
 pub struct Contract {
     pub address: Addr,
-    pub redemption_rate_query: Binary,
     pub unbond_start_msg: Binary,
     pub unbond_end_msg: Binary,
 }

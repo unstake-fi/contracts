@@ -5,7 +5,8 @@ use crate::config::Config;
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     coin, ensure_eq, to_json_binary, wasm_execute, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut,
-    Env, Event, MessageInfo, Order, Response, StdError, StdResult, Timestamp, Uint128, WasmMsg,
+    Empty, Env, Event, MessageInfo, Order, Response, StdError, StdResult, Timestamp, Uint128,
+    WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
@@ -51,7 +52,7 @@ pub fn execute(
 ) -> Result<Response<KujiraMsg>, ContractError> {
     let config = Config::load(deps.storage)?;
     match msg {
-        ExecuteMsg::Unstake { max_fee } => {
+        ExecuteMsg::Unstake { max_fee, callback } => {
             let amount = must_pay(&info, config.ask_denom.as_ref())?;
             let broker = Broker::load(deps.storage)?;
             let rates = Rates::load(deps.querier, &config.adapter, &config.vault_address)?;
@@ -60,7 +61,9 @@ pub fn execute(
                 return Err(ContractError::MaxFeeExceeded {});
             };
             broker.accept_offer(deps, &offer)?;
-            let send_msg = config.offer_denom.send(&info.sender, &offer.offer_amount);
+            let send_msg = callback
+                .map(|cb| cb.to_message(&info.sender, Empty {}, []).unwrap())
+                .unwrap_or(config.offer_denom.send(&info.sender, &offer.offer_amount));
             let borrow_msg = vault_borrow_msg(
                 &config.vault_address,
                 offer.offer_amount,

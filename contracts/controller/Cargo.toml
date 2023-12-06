@@ -56,3 +56,4 @@ thiserror = { workspace = true }
 cw-multi-test = { workspace = true }
 unstake-delegate = { path = "../delegate" }
 kujira-rs-testing = { git = "https://github.com/team-kujira/kujira-rs-testing", rev = "0166e7d5f0c56a89a9ca8d17ffa0a0428cb87649" }
+cw1-whitelist = "1.1.2"
