@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use cosmwasm_std::{coin, coins, Addr, Coin, Decimal, Uint128};
+use cosmwasm_std::{coin, coins, Addr, Coin, Decimal, Event, Uint128};
 use cw_multi_test::{ContractWrapper, Executor};
 use kujira::{fee_address, Denom, HumanPrice};
 use kujira_ghost::common::OracleType;
@@ -416,7 +416,7 @@ fn execute_offer() {
 
 #[test]
 fn execute_unfunded_offer() {
-    // Quote where we no plenty of reserves
+    // Quote where we have no reserves
     let api = MockApiBech32::new("kujira");
     let balances = vec![
         (api.addr_make("unstaker"), coins(10000u128, "base")),
@@ -791,4 +791,141 @@ fn close_losing_offer() {
     // And ghost should have the borrowed amount returned with interest
     // 10326 over 3 weeks at 100% = 3 / 52 = 595.
     assert_eq!(ghost_balances, coins(100000595u128, "quote"));
+}
+
+#[test]
+fn reserves() {
+    // Test that minting of the reserve receipt token is correct, and redeemed correctly
+    let api = MockApiBech32::new("kujira");
+    let balances = vec![
+        (api.addr_make("funder"), coins(100000000u128, "quote")),
+        (api.addr_make("unstaker"), coins(10000u128, "base")),
+        (api.addr_make("lender"), coins(100000000u128, "quote")),
+    ];
+    let (mut app, contracts) = setup(balances);
+
+    // Initial deposit
+    app.execute_contract(
+        api.addr_make("funder"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Fund {},
+        &coins(20000u128, "quote"),
+    )
+    .unwrap();
+
+    let rct_balance = app
+        .wrap()
+        .query_balance(
+            api.addr_make("funder"),
+            format!("factory/{}/ursv", contracts.controller),
+        )
+        .unwrap();
+    assert_eq!(rct_balance.amount, Uint128::from(20000u128));
+
+    // Second deposit, scaled with no extra revenue
+
+    app.execute_contract(
+        api.addr_make("funder"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Fund {},
+        &coins(20000u128, "quote"),
+    )
+    .unwrap();
+
+    let rct_balance = app
+        .wrap()
+        .query_balance(
+            api.addr_make("funder"),
+            format!("factory/{}/ursv", contracts.controller),
+        )
+        .unwrap();
+    assert_eq!(rct_balance.amount, Uint128::from(40000u128));
+
+    // Do an unstake to increase the amount of reserves
+
+    app.execute_contract(
+        api.addr_make("lender"),
+        contracts.ghost.clone(),
+        &kujira_ghost::receipt_vault::ExecuteMsg::Deposit(
+            kujira_ghost::receipt_vault::DepositMsg { callback: None },
+        ),
+        &coins(100000000u128, "quote"),
+    )
+    .unwrap();
+
+    let amount = Uint128::from(10000u128);
+
+    app.execute_contract(
+        api.addr_make("unstaker"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Unstake {
+            callback: None,
+            max_fee: amount,
+        },
+        &coins(10000u128, "base"),
+    )
+    .unwrap();
+
+    // 2 weeks later, ghost debt rate should have increased
+    app.update_block(|x| {
+        x.time = x.time.plus_days(14);
+    });
+
+    let delegates: DelegatesResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Delegates {})
+        .unwrap();
+    let (delegate, _) = delegates.delegates[0].clone();
+
+    // Make sure that the mocked LSD provider has enough tokens to return once unbonding is complete
+    app.send_tokens(
+        api.addr_make("funder"),
+        contracts.provider.clone(),
+        &coins(500000u128, "quote"),
+    )
+    .unwrap();
+
+    app.execute_contract(
+        api.addr_make("random"),
+        delegate.clone(),
+        &unstake::delegate::ExecuteMsg::Complete {},
+        &vec![],
+    )
+    .unwrap();
+
+    // Third deposit, should have slight less receipt token printed as the reserves > supply
+
+    app.execute_contract(
+        api.addr_make("funder"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Fund {},
+        &coins(20000u128, "quote"),
+    )
+    .unwrap();
+
+    let rct_balance = app
+        .wrap()
+        .query_balance(
+            api.addr_make("funder"),
+            format!("factory/{}/ursv", contracts.controller),
+        )
+        .unwrap();
+    assert_eq!(rct_balance.amount, Uint128::from(59994u128));
+
+    // And now we withdraw 20% of the minted tokens. Shoudl receive more than 20% of the total 60,000 deposited
+
+    let res = app
+        .execute_contract(
+            api.addr_make("funder"),
+            contracts.controller.clone(),
+            &ExecuteMsg::Withdraw {},
+            &coins(11999u128, format!("factory/{}/ursv", contracts.controller)),
+        )
+        .unwrap();
+
+    res.assert_event(&Event::new("transfer").add_attributes(vec![
+        ("recipient", api.addr_make("funder").to_string()),
+        ("sender", contracts.controller.to_string()),
+        ("amount", "12002quote".to_string()),
+    ]));
 }
