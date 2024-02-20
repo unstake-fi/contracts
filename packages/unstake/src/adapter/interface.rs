@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Coin, CosmosMsg, CustomQuery, Decimal, QuerierWrapper, StdResult};
 
-use super::eris::Eris;
+use super::{eris::Eris, quark::Quark};
 
 pub trait Unstake {
     fn redemption_rate<T: CustomQuery>(&self, querier: QuerierWrapper<T>) -> StdResult<Decimal>;
@@ -13,18 +13,21 @@ impl Unstake for Adapter {
     fn redemption_rate<T: CustomQuery>(&self, querier: QuerierWrapper<T>) -> StdResult<Decimal> {
         match self {
             Adapter::Eris(eris) => eris.redemption_rate(querier),
+            Adapter::Quark(quark) => quark.redemption_rate(querier),
         }
     }
 
     fn unbond_start<T>(&self, funds: Coin) -> CosmosMsg<T> {
         match self {
             Adapter::Eris(eris) => eris.unbond_start(funds),
+            Adapter::Quark(quark) => quark.unbond_start(funds),
         }
     }
 
     fn unbond_end<T>(&self) -> CosmosMsg<T> {
         match self {
             Adapter::Eris(eris) => eris.unbond_end(),
+            Adapter::Quark(quark) => quark.unbond_end(),
         }
     }
 }
@@ -32,4 +35,5 @@ impl Unstake for Adapter {
 #[cw_serde]
 pub enum Adapter {
     Eris(Eris),
+    Quark(Quark),
 }
