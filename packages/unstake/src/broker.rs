@@ -49,10 +49,32 @@ impl Broker {
         BROKER.load(storage)
     }
 
-    pub fn fund_reserves(storage: &mut dyn Storage, amount: Uint128) -> StdResult<()> {
+    pub fn fund_reserves(storage: &mut dyn Storage, amount: Uint128) -> StdResult<Option<Decimal>> {
         let (mut reserves, deployed) = RESERVES.load(storage).unwrap_or_default();
+        let total = reserves + deployed;
         reserves += amount;
-        RESERVES.save(storage, &(reserves, deployed))
+        RESERVES.save(storage, &(reserves, deployed))?;
+
+        if total.is_zero() {
+            return Ok(None);
+        };
+
+        let share = Decimal::from_ratio(amount, total);
+        Ok(Some(share))
+    }
+
+    pub fn withdraw_reserves(
+        storage: &mut dyn Storage,
+        share: Decimal,
+    ) -> Result<Uint128, ContractError> {
+        let (mut reserves, deployed) = RESERVES.load(storage).unwrap_or_default();
+        let amount = (reserves + deployed) * share;
+
+        reserves = reserves
+            .checked_sub(amount)
+            .map_err(|_| ContractError::InsufficentReserves {})?;
+        RESERVES.save(storage, &(reserves, deployed))?;
+        Ok(amount)
     }
 
     pub fn update(&mut self, min_rate: Option<Decimal>, duration: Option<u64>) {

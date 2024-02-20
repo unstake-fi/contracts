@@ -55,10 +55,8 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
                 denom: Denom::from("quote"),
                 oracle: OracleType::Static(HumanPrice::from(Decimal::one())),
                 decimals: 6,
-                receipt_denom: "urcpt".to_string(),
-                debt_token_denom: "udebt".to_string(),
                 denom_creation_fee: Uint128::zero(),
-                utilization_to_rate: vec![],
+                utilization_to_curve: vec![],
             },
             &vec![],
             "ghost",
@@ -162,11 +160,13 @@ fn quote_initial() {
 
 #[test]
 fn quote_reserve_clamped() {
+    let api = MockApiBech32::new("kujira");
+
     // Same as above, but with a small amount of reserve allocated that will be entirely consumed
-    let balances = vec![(Addr::unchecked("funder"), coins(100000000u128, "quote"))];
+    let balances = vec![(api.addr_make("funder"), coins(100000000u128, "quote"))];
     let (mut app, contracts) = setup(balances);
     app.execute_contract(
-        Addr::unchecked("funder"),
+        app.api().addr_make("funder"),
         contracts.controller.clone(),
         &ExecuteMsg::Fund {},
         &coins(200u128, "quote"),
@@ -213,10 +213,12 @@ fn quote_reserve_clamped() {
 #[test]
 fn quote_unclamped() {
     // Quote where we have plenty of reserves, and the current rate is higher than the minimum rate
-    let balances = vec![(Addr::unchecked("funder"), coins(100000000u128, "quote"))];
+    let api = MockApiBech32::new("kujira");
+
+    let balances = vec![(api.addr_make("funder"), coins(100000000u128, "quote"))];
     let (mut app, contracts) = setup(balances);
     app.execute_contract(
-        Addr::unchecked("funder"),
+        app.api().addr_make("funder"),
         contracts.controller.clone(),
         &ExecuteMsg::Fund {},
         &coins(20000u128, "quote"),
@@ -261,10 +263,12 @@ fn quote_unclamped() {
 #[test]
 fn quote_min_rate_clamped() {
     // Quote where we have plenty of reserves, and the minimum rate is highter than the current rate
-    let balances = vec![(Addr::unchecked("funder"), coins(100000000u128, "quote"))];
+    let api = MockApiBech32::new("kujira");
+
+    let balances = vec![(api.addr_make("funder"), coins(100000000u128, "quote"))];
     let (mut app, contracts) = setup(balances);
     app.execute_contract(
-        Addr::unchecked("funder"),
+        app.api().addr_make("funder"),
         contracts.controller.clone(),
         &ExecuteMsg::Fund {},
         &coins(20000u128, "quote"),

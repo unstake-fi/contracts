@@ -37,10 +37,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> StdResult<Response<KujiraMsg>> {
     let init = INIT.load(deps.storage)?;
-    let debt_token_denom = Denom::from(format!(
-        "factory/{}/{}",
-        env.contract.address, init.debt_token_denom
-    ));
+    let debt_token_denom = Denom::from(format!("factory/{}/udebt", env.contract.address));
     let denom = init.denom;
     match msg {
         ExecuteMsg::Deposit(_) => Ok(Response::default()),
@@ -137,5 +134,6 @@ pub fn query(deps: Deps<KujiraQuery>, env: Env, msg: QueryMsg) -> StdResult<Bina
         }),
         QueryMsg::MarketParams { .. } => todo!(),
         QueryMsg::Markets { .. } => todo!(),
+        QueryMsg::InterestParams { .. } => todo!(),
     }
 }

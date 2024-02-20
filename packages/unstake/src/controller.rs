@@ -50,6 +50,9 @@ pub enum ExecuteMsg {
     /// Adds funds to the reserve
     Fund {},
 
+    /// Withdraw deposited reserve funds
+    Withdraw {},
+
     /// Update the Controller config
     UpdateConfig {
         owner: Option<Addr>,

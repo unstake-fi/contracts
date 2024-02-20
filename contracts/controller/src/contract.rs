@@ -4,14 +4,14 @@ use crate::config::Config;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coin, ensure_eq, to_json_binary, wasm_execute, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut,
-    Empty, Env, Event, MessageInfo, Order, Response, StdError, StdResult, Timestamp, Uint128,
-    WasmMsg,
+    coin, ensure_eq, to_json_binary, wasm_execute, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
+    DepsMut, Empty, Env, Event, MessageInfo, Order, Response, StdError, StdResult, Timestamp,
+    Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
-use kujira::{Denom, KujiraMsg, KujiraQuery};
+use kujira::{Denom, DenomMsg, KujiraMsg, KujiraQuery};
 use serde::Serialize;
 use unstake::broker::Status;
 use unstake::controller::{
@@ -40,7 +40,11 @@ pub fn instantiate(
     config.save(deps.storage)?;
     let broker = Broker::from(msg);
     broker.save(deps.storage)?;
-    Ok(Response::default())
+    let create_msg: CosmosMsg<KujiraMsg> = DenomMsg::Create {
+        subdenom: "ursv".into(),
+    }
+    .into();
+    Ok(Response::default().add_message(create_msg))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -201,8 +205,35 @@ pub fn execute(
         }
         ExecuteMsg::Fund {} => {
             let amount = must_pay(&info, config.offer_denom.as_ref())?;
-            Broker::fund_reserves(deps.storage, amount)?;
-            Ok(Response::default())
+            let reserve_share = Broker::fund_reserves(deps.storage, amount)?;
+            let supply = deps.querier.query_supply(token_denom(&env).to_string())?;
+            let mint_amount = reserve_share
+                .map(|x| supply.amount * x)
+                .unwrap_or_else(|| amount);
+            let mint_msg: CosmosMsg<KujiraMsg> = DenomMsg::Mint {
+                denom: token_denom(&env),
+                amount: mint_amount,
+                recipient: info.sender,
+            }
+            .into();
+            Ok(Response::default().add_message(mint_msg))
+        }
+        ExecuteMsg::Withdraw {} => {
+            let amount = must_pay(&info, token_denom(&env).to_string().as_str())?;
+            let supply = deps.querier.query_supply(token_denom(&env).to_string())?;
+            let share = Decimal::from_ratio(amount, supply.amount);
+            let removed_amount = Broker::withdraw_reserves(deps.storage, share)?;
+            let burn_msg: CosmosMsg<KujiraMsg> = DenomMsg::Burn {
+                denom: token_denom(&env),
+                amount,
+            }
+            .into();
+            let send_msg: CosmosMsg<KujiraMsg> =
+                config.offer_denom.send(&info.sender, &removed_amount);
+
+            Ok(Response::default()
+                .add_message(burn_msg)
+                .add_message(send_msg))
         }
         ExecuteMsg::UpdateBroker { min_rate, duration } => {
             ensure_eq!(info.sender, config.owner, ContractError::Unauthorized {});
@@ -291,4 +322,9 @@ pub fn amount(denom: &Denom, funds: Vec<Coin>) -> StdResult<Uint128> {
         None => Err(StdError::not_found(denom.to_string())),
         Some(Coin { amount, .. }) => Ok(*amount),
     }
+}
+
+fn token_denom(env: &Env) -> Denom {
+    let addr = env.contract.address.clone();
+    format!("factory/{addr}/ursv").into()
 }
