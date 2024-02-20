@@ -866,6 +866,31 @@ fn reserves() {
     )
     .unwrap();
 
+    // Check we can't withdraw everything whilst reserves are being used
+    app.execute_contract(
+        api.addr_make("funder"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Withdraw {},
+        &coins(40000u128, format!("factory/{}/ursv", contracts.controller)),
+    )
+    .unwrap_err();
+
+    // ...but that a smaller withdrawal also considers the consumed reserves in calculations
+    let res = app
+        .execute_contract(
+            api.addr_make("funder"),
+            contracts.controller.clone(),
+            &ExecuteMsg::Withdraw {},
+            &coins(20000u128, format!("factory/{}/ursv", contracts.controller)),
+        )
+        .unwrap();
+
+    res.assert_event(&Event::new("transfer").add_attributes(vec![
+        ("recipient", api.addr_make("funder").to_string()),
+        ("sender", contracts.controller.to_string()),
+        ("amount", "20000quote".to_string()),
+    ]));
+
     // 2 weeks later, ghost debt rate should have increased
     app.update_block(|x| {
         x.time = x.time.plus_days(14);
@@ -910,22 +935,22 @@ fn reserves() {
             format!("factory/{}/ursv", contracts.controller),
         )
         .unwrap();
-    assert_eq!(rct_balance.amount, Uint128::from(59994u128));
+    assert_eq!(rct_balance.amount, Uint128::from(39988u128));
 
-    // And now we withdraw 20% of the minted tokens. Shoudl receive more than 20% of the total 60,000 deposited
+    // And now we withdraw some of what's left, ratio should be fractionally greater than 1
 
     let res = app
         .execute_contract(
             api.addr_make("funder"),
             contracts.controller.clone(),
             &ExecuteMsg::Withdraw {},
-            &coins(11999u128, format!("factory/{}/ursv", contracts.controller)),
+            &coins(19994u128, format!("factory/{}/ursv", contracts.controller)),
         )
         .unwrap();
 
     res.assert_event(&Event::new("transfer").add_attributes(vec![
         ("recipient", api.addr_make("funder").to_string()),
         ("sender", contracts.controller.to_string()),
-        ("amount", "12002quote".to_string()),
+        ("amount", "20006quote".to_string()),
     ]));
 }
