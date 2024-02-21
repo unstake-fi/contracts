@@ -16,7 +16,6 @@ impl Quark {
     }
 }
 
-// The address provided is the bow-compat contract by Quark, so it uses the same interfaces as Eris
 impl Unstake for Quark {
     fn redemption_rate<T: CustomQuery>(&self, querier: QuerierWrapper<T>) -> StdResult<Decimal> {
         let state: liquifier::StateResponse =
