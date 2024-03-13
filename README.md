@@ -27,3 +27,8 @@ The Instant Unstaking protocol for the interchain, only on @TeamKujira. Don’t 
 
 - controller: code id `246`
 - delegate: code id `247`
+
+#### 0.3.0: Eris + Quark + Gravedigger
+
+- controller: code id `252`
+- delegate: code id `253`
