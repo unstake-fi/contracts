@@ -7,8 +7,8 @@ pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
 
-    #[error("Unauthorized")]
-    Unauthorized {},
+    #[error("Instantiate2Address {0}")]
+    Instantiate2Address(#[from] Instantiate2AddressError),
 
     #[error("RateOverflow {0}")]
     RateOverflow(#[from] OverflowError),
@@ -16,17 +16,20 @@ pub enum ContractError {
     #[error("{0}")]
     Payment(#[from] PaymentError),
 
+    #[error("Unauthorized")]
+    Unauthorized {},
+
     #[error("InsufficentReserves")]
     InsufficentReserves {},
+
+    #[error("ControllerLimitExceeded")]
+    ControllerLimitExceeded {},
 
     #[error("InsufficentFunds")]
     InsufficentFunds {},
 
     #[error("MaxFeeExceeded")]
     MaxFeeExceeded {},
-
-    #[error("Instantiate2Address {0}")]
-    Instantiate2Address(#[from] Instantiate2AddressError),
 
     #[error("Insolvent {debt_remaining} remaining")]
     Insolvent { debt_remaining: Uint128 },
