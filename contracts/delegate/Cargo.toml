@@ -1,6 +1,6 @@
 [package]
 name = "unstake-delegate"
-version = "0.1.0"
+version = "0.3.0"
 authors = ["codehans <94654388+codehans@users.noreply.github.com>"]
 edition = "2021"
 
