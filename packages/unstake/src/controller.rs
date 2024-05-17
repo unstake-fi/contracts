@@ -4,7 +4,7 @@ use crate::{
     rates::Rates,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Coin, Decimal, Timestamp, Uint128};
+use cosmwasm_std::{Addr, Binary, Decimal, Timestamp, Uint128};
 use kujira::{CallbackData, CallbackMsg, Denom};
 
 #[cw_serde]
@@ -13,6 +13,7 @@ pub struct InstantiateMsg {
     pub protocol_fee: Decimal,
     pub protocol_fee_address: Addr,
     pub delegate_code_id: u64,
+    pub reserve_address: Addr,
     pub vault_address: Addr,
 
     /// The ask denom of the Broker - ie the LST/receipt token
@@ -47,12 +48,6 @@ pub enum ExecuteMsg {
     /// Returns the unbonded tokens, the debt tokens for ghost, and the corresponding offer
     Complete { offer: Offer },
 
-    /// Adds funds to the reserve
-    Fund {},
-
-    /// Withdraw deposited reserve funds
-    Withdraw {},
-
     /// Update the Controller config
     UpdateConfig {
         owner: Option<Addr>,
@@ -70,7 +65,7 @@ pub enum ExecuteMsg {
 
 #[cw_serde]
 pub enum CallbackType {
-    Unstake { offer: Offer, unbond_amount: Coin },
+    GhostBorrow { offer: Offer },
 }
 
 #[cw_serde]
@@ -112,10 +107,6 @@ pub struct StatusResponse {
     pub total_base: Uint128,
     /// The total amount of quote asset that has been returned from unbonding
     pub total_quote: Uint128,
-    /// The amount of reserve currently available for new Unstakes
-    pub reserve_available: Uint128,
-    /// The amount of reserve currently deployed in in-flight Unstakes
-    pub reserve_deployed: Uint128,
 }
 
 #[cw_serde]
@@ -124,6 +115,7 @@ pub struct ConfigResponse {
     pub protocol_fee: Decimal,
     pub protocol_fee_address: Addr,
     pub delegate_code_id: u64,
+    pub reserve_address: Addr,
     pub vault_address: Addr,
     pub offer_denom: Denom,
     pub ask_denom: Denom,
@@ -167,8 +159,6 @@ impl From<Status> for StatusResponse {
         Self {
             total_base: value.total_base,
             total_quote: value.total_quote,
-            reserve_available: value.reserve_available,
-            reserve_deployed: value.reserve_deployed,
         }
     }
 }

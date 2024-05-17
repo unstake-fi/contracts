@@ -274,11 +274,11 @@ pub fn query(deps: Deps<KujiraQuery>, env: Env, msg: QueryMsg) -> Result<Binary,
             let total_ghost_amount =
                 rsv_tokens_to_amt(state.total_deposits, state.reserve_redemption_ratio);
             let total_ghost_lent = total_ghost_amount.checked_sub(ghost_not_lent)?;
-            let reserve_lent = amt_to_rsv_tokens(total_ghost_lent, state.reserve_redemption_ratio);
 
             Ok(to_json_binary(&StatusResponse {
                 total_deposited: state.total_deposits,
-                total_lent: reserve_lent,
+                reserves_deployed: total_ghost_lent,
+                reserves_available: ghost_not_lent,
                 reserve_redemption_rate: state.reserve_redemption_ratio,
             })?)
         }

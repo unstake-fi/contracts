@@ -15,6 +15,7 @@ pub struct Config {
     pub protocol_fee: Decimal,
     pub protocol_fee_address: Addr,
     pub delegate_code_id: u64,
+    pub reserve_address: Addr,
     pub vault_address: Addr,
     pub offer_denom: Denom,
     pub ask_denom: Denom,
@@ -56,6 +57,10 @@ impl Config {
     pub fn debt_denom(&self) -> Denom {
         Denom::from(format!("factory/{}/udebt", self.vault_address))
     }
+
+    pub fn ghost_denom(&self) -> Denom {
+        Denom::from(format!("factory/{}/urcpt", self.vault_address))
+    }
 }
 
 impl From<InstantiateMsg> for Config {
@@ -65,6 +70,7 @@ impl From<InstantiateMsg> for Config {
             protocol_fee: value.protocol_fee,
             protocol_fee_address: value.protocol_fee_address,
             delegate_code_id: value.delegate_code_id,
+            reserve_address: value.reserve_address,
             vault_address: value.vault_address,
             offer_denom: value.offer_denom,
             ask_denom: value.ask_denom,
@@ -80,6 +86,7 @@ impl From<Config> for ConfigResponse {
             protocol_fee: value.protocol_fee,
             protocol_fee_address: value.protocol_fee_address,
             delegate_code_id: value.delegate_code_id,
+            reserve_address: value.reserve_address,
             vault_address: value.vault_address,
             offer_denom: value.offer_denom,
             ask_denom: value.ask_denom,

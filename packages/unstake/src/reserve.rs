@@ -37,6 +37,9 @@ pub enum ExecuteMsg {
     RemoveController { controller: Addr },
     /// Update the Reserve config
     UpdateConfig { owner: Option<Addr> },
+
+    /// Migration Utility for legacy controller denoms
+    MigrateLegacyReserve {},
 }
 
 #[cw_serde]
@@ -76,7 +79,12 @@ pub struct WhitelistItem {
 
 #[cw_serde]
 pub struct StatusResponse {
+    /// The total supply of rsv tokens
     pub total_deposited: Uint128,
-    pub total_lent: Uint128,
+    /// The amount of the reserve that is currently allocated. Denominated in ghost rcpt tokens.
+    pub reserves_deployed: Uint128,
+    /// The amount of the reserve that is currently available. Denominated in ghost rcpt tokens.
+    pub reserves_available: Uint128,
+    /// The redemption ratio of rsv tokens to ghost rcpt tokens
     pub reserve_redemption_rate: Decimal,
 }

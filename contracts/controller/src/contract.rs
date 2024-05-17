@@ -1,17 +1,18 @@
-use std::ops::{AddAssign, Sub};
+use std::ops::Sub;
 
 use crate::config::Config;
+use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coin, ensure_eq, to_json_binary, wasm_execute, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
-    DepsMut, Empty, Env, Event, MessageInfo, Order, Response, StdError, StdResult, Timestamp,
-    Uint128, WasmMsg,
+    ensure_eq, to_json_binary, wasm_execute, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Empty,
+    Env, Event, MessageInfo, Order, Response, StdError, StdResult, Timestamp, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
 use kujira::{Denom, DenomMsg, KujiraMsg, KujiraQuery};
+use kujira_ghost::math::amt_to_rcpt_tokens;
 use serde::Serialize;
 use unstake::broker::Status;
 use unstake::controller::{
@@ -60,58 +61,66 @@ pub fn execute(
             let amount = must_pay(&info, config.ask_denom.as_ref())?;
             let broker = Broker::load(deps.storage)?;
             let rates = Rates::load(deps.querier, &config.adapter, &config.vault_address)?;
-            let offer = broker.offer(deps.as_ref(), &rates, amount)?;
+            let reserve_status = deps.querier.query_wasm_smart(
+                &config.reserve_address,
+                &unstake::reserve::QueryMsg::Status {},
+            )?;
+            let offer = broker.offer(&reserve_status, &rates, amount)?;
             if offer.fee.gt(&max_fee) {
                 return Err(ContractError::MaxFeeExceeded {});
             };
             broker.accept_offer(deps, &offer)?;
-            let send_msg = callback
-                .map(|cb| cb.to_message(&info.sender, Empty {}, []).unwrap())
-                .unwrap_or(config.offer_denom.send(&info.sender, &offer.offer_amount));
-            let borrow_msg = vault_borrow_msg(
-                &config.vault_address,
-                offer.offer_amount,
-                Some(&CallbackType::Unstake {
-                    offer: offer.clone(),
-                    unbond_amount: config.ask_denom.coin(&amount),
-                }),
-            )?;
+
+            let msgs: Vec<CosmosMsg<KujiraMsg>> = vec![
+                // Number one, request reserves from the reserve contract.
+                request_reserve_msg(&config.reserve_address, offer.reserve_allocation)?,
+                // Number two, borrow from GHOST
+                vault_borrow_msg(
+                    &config.vault_address,
+                    offer.offer_amount,
+                    Some(&CallbackType::GhostBorrow {
+                        offer: offer.clone(),
+                    }),
+                )?,
+                // Number three, return instant liquidity to sender.
+                callback
+                    .map(|cb| cb.to_message(&info.sender, Empty {}, []).unwrap())
+                    .unwrap_or(config.offer_denom.send(&info.sender, &offer.offer_amount)),
+            ];
 
             let event = Event::new("unstake/controller/unstake")
                 .add_attribute("amount", amount)
                 .add_attribute("rates", rates)
                 .add_attribute("offer", offer);
 
-            Ok(Response::default()
-                .add_event(event)
-                .add_message(borrow_msg)
-                .add_message(send_msg))
+            Ok(Response::default().add_event(event).add_messages(msgs))
         }
         ExecuteMsg::Callback(cb) => {
             let cb_type: CallbackType = cb.deserialize_callback()?;
             match cb_type {
-                CallbackType::Unstake {
-                    offer,
-                    unbond_amount,
-                } => {
+                CallbackType::GhostBorrow { offer } => {
                     ensure_eq!(
                         info.sender,
                         config.vault_address,
                         ContractError::Unauthorized {}
                     );
-                    let balances = deps
-                        .querier
-                        .query_all_balances(env.contract.address.clone())?;
+                    let rates = Rates::load(deps.querier, &config.adapter, &config.vault_address)?;
 
-                    let mut funds = NativeBalance(vec![]);
+                    // Deposit the fee into GHOST for the duration of the unbonding
+                    let fee_deposit_msg = vault_deposit_msg(&config, offer.fee)?;
+                    let ghost_fee_amount = amt_to_rcpt_tokens(offer.fee, rates.vault_deposit);
 
-                    for Coin { denom, amount } in balances {
-                        if denom == config.offer_denom.to_string() {
-                            funds.add_assign(coin(offer.reserve_allocation.u128(), denom))
-                        } else {
-                            funds.add_assign(coin(amount.u128(), denom))
-                        }
-                    }
+                    // subtract the deposited fee from the offer denom amount
+                    let mut offer_amount = amount(&config.offer_denom, &info.funds)?;
+                    offer_amount.amount -= offer.fee;
+
+                    // add the deposited fee to the ghost denom amount
+                    let mut ghost_amount = amount(&config.ghost_denom(), &info.funds)?;
+                    ghost_amount.amount += ghost_fee_amount;
+
+                    let debt_amount = amount(&config.debt_denom(), &info.funds)?;
+                    let mut funds = NativeBalance(vec![offer_amount, ghost_amount, debt_amount]);
+                    funds.normalize();
 
                     let label: String = format!(
                         "Unstake.fi delegate {}/{}",
@@ -126,7 +135,7 @@ pub fn execute(
                         predict_address(config.delegate_code_id, &label, &deps.as_ref(), &env)?;
 
                     let msg = unstake::delegate::InstantiateMsg {
-                        unbond_amount: unbond_amount.clone(),
+                        unbond_amount: config.ask_denom.coin(&offer.unbond_amount),
                         controller: env.contract.address.clone(),
                         offer: offer.clone(),
                         adapter: config.adapter,
@@ -144,11 +153,12 @@ pub fn execute(
                     DELEGATES.save(deps.storage, address.clone(), &env.block.time)?;
 
                     let event: Event = Event::new("unstake/controller/callback/unstake")
-                        .add_attribute("unbond_amount", unbond_amount.amount)
+                        .add_attribute("unbond_amount", offer.unbond_amount)
                         .add_attribute("delegate", address);
 
                     Ok(Response::default()
                         .add_event(event)
+                        .add_message(fee_deposit_msg)
                         .add_message(instantiate))
                 }
             }
@@ -159,81 +169,120 @@ pub fn execute(
                 .map_err(|_| ContractError::Unauthorized {})?;
             DELEGATES.remove(deps.storage, info.sender);
 
-            let debt_tokens = amount(&config.debt_denom(), info.funds.clone())?;
-            let returned_tokens = amount(&config.offer_denom, info.funds)?;
+            let debt_coin = amount(&config.debt_denom(), &info.funds)?;
+            let base_coin = amount(&config.offer_denom, &info.funds)?;
+            // Legacy controllers will have the reserves denominated in offer_denom instead of ghost_denom
+            // TODO: Once all legacy delegates have completed, this behavior can be made into an error.
+            let ghost_coin = amount(&config.ghost_denom(), &info.funds)
+                .unwrap_or(config.ghost_denom().coin(&0u128));
+
             let rates = Rates::load(deps.querier, &config.adapter, &config.vault_address)?;
-            // We'll always get the reserve allocation back. If we get nothing else back it means the
-            // unbonding hasn't yet completed
-            if returned_tokens.sub(offer.reserve_allocation).is_zero() {
-                return Err(ContractError::InsufficentFunds {});
-            }
             let broker = Broker::load(deps.storage)?;
 
-            // Calculate how much we need to send back to Ghost. Could be more or less than the offer amount
-            let (repay_amount, protocol_fee_amount) = broker.close_offer(
-                deps,
-                &rates,
-                &offer,
-                debt_tokens,
-                returned_tokens,
-                config.protocol_fee,
-            )?;
+            let base_amount = base_coin.amount;
+            let ghost_amount = ghost_coin.amount;
 
-            let mut funds = NativeBalance(vec![
-                config.debt_denom().coin(&debt_tokens),
-                config.offer_denom.coin(&repay_amount),
-            ]);
-            funds.normalize();
+            let mut msgs = vec![];
+            // TODO: Once all legacy delegates have completed, remove this check
+            if ghost_coin.amount.is_zero() {
+                // Legacy delegate, reserves are in offer_denom
 
-            let ghost_repay_msg = vault_repay_msg(&config.vault_address, funds.into_vec())?;
+                // We'll always get the reserve allocation back. If we get nothing else back it means the
+                // unbonding hasn't yet completed
+                if base_coin.amount.sub(offer.reserve_allocation).is_zero() {
+                    return Err(ContractError::InsufficentFunds {});
+                }
 
-            let mut msgs = vec![ghost_repay_msg];
-            if !protocol_fee_amount.is_zero() {
-                msgs.push(
-                    config
-                        .offer_denom
-                        .send(&config.protocol_fee_address, &protocol_fee_amount),
-                )
+                let (repay_funds, reserve_return, base_fee_amount) =
+                    broker.close_legacy_offer(deps, &rates, &offer, debt_coin, base_coin)?;
+                let protocol_fee = base_fee_amount.mul_floor(config.protocol_fee);
+                let reserve_fee = base_fee_amount.sub(protocol_fee);
+
+                // repay ghost
+                let ghost_repay_msg = vault_repay_msg(&config.vault_address, repay_funds.clone())?;
+                msgs.push(ghost_repay_msg);
+
+                // Convert the reserve and its fee to ghost denom, since legacy used base denom in reserve.
+                let total_reserve_deposit = reserve_return + reserve_fee;
+                let ghost_return_amount =
+                    amt_to_rcpt_tokens(total_reserve_deposit, rates.vault_deposit);
+                let deposit_msg = vault_deposit_msg(&config, total_reserve_deposit)?;
+                msgs.push(deposit_msg);
+
+                // the legacy reserve_allocation was denominated in base
+                let original_allocation =
+                    amt_to_rcpt_tokens(offer.reserve_allocation, rates.vault_deposit);
+                let reserve_repay_msg =
+                    repay_reserve_msg(&config, original_allocation, ghost_return_amount)?;
+                msgs.push(reserve_repay_msg);
+
+                // Finally, send the protocol fee to the fee address
+                if !protocol_fee.is_zero() {
+                    msgs.push(
+                        config
+                            .offer_denom
+                            .send(&config.protocol_fee_address, &protocol_fee),
+                    );
+                }
+                let event: Event = Event::new("unstake/controller/legacy-complete")
+                    .add_attribute("returned_tokens", base_amount)
+                    .add_attribute(
+                        "repay_amount",
+                        repay_funds
+                            .iter()
+                            .map(|c| c.to_string())
+                            .collect::<Vec<String>>()
+                            .join(", "),
+                    )
+                    .add_attribute("protocol_fee_amount", protocol_fee)
+                    .add_attribute("reserve_fee", reserve_fee);
+                Ok(Response::default().add_event(event).add_messages(msgs))
+            } else {
+                // Reserves & fee are in ghost_denom
+
+                // If no returned tokens, the unbonding hasn't yet completed
+                if base_coin.amount.is_zero() {
+                    return Err(ContractError::InsufficentFunds {});
+                }
+
+                let (repay_funds, reserve_return, ghost_fee_amount) =
+                    broker.close_offer(deps, &rates, &offer, debt_coin, base_coin, ghost_coin)?;
+                let protocol_fee_amount = ghost_fee_amount.mul_floor(config.protocol_fee);
+                let ghost_reserve_fee = ghost_fee_amount.sub(protocol_fee_amount);
+
+                // repay ghost
+                let ghost_repay_msg = vault_repay_msg(&config.vault_address, repay_funds.clone())?;
+                msgs.push(ghost_repay_msg);
+
+                // return reserves
+                let total_reserve_return = reserve_return + ghost_reserve_fee;
+                let reserve_repay_msg =
+                    repay_reserve_msg(&config, offer.reserve_allocation, total_reserve_return)?;
+                msgs.push(reserve_repay_msg);
+
+                // Finally, send the protocol fee to the fee address
+                if !protocol_fee_amount.is_zero() {
+                    msgs.push(
+                        config
+                            .ghost_denom()
+                            .send(&config.protocol_fee_address, &protocol_fee_amount),
+                    );
+                }
+                let event: Event = Event::new("unstake/controller/v2-complete")
+                    .add_attribute("returned_base", base_amount)
+                    .add_attribute("returned_ghost", ghost_amount)
+                    .add_attribute(
+                        "repay_amount",
+                        repay_funds
+                            .iter()
+                            .map(|c| c.to_string())
+                            .collect::<Vec<String>>()
+                            .join(", "),
+                    )
+                    .add_attribute("protocol_fee_amount", protocol_fee_amount)
+                    .add_attribute("ghost_reserve_fee", ghost_reserve_fee);
+                Ok(Response::default().add_event(event).add_messages(msgs))
             }
-
-            let event: Event = Event::new("unstake/controller/complete")
-                .add_attribute("returned_tokens", returned_tokens)
-                .add_attribute("repay_amount", repay_amount)
-                .add_attribute("protocol_fee_amount", protocol_fee_amount);
-
-            Ok(Response::default().add_event(event).add_messages(msgs))
-        }
-        ExecuteMsg::Fund {} => {
-            let amount = must_pay(&info, config.offer_denom.as_ref())?;
-            let reserve_share = Broker::fund_reserves(deps.storage, amount)?;
-            let supply = deps.querier.query_supply(token_denom(&env).to_string())?;
-            let mint_amount = reserve_share
-                .map(|x| supply.amount * x)
-                .unwrap_or_else(|| amount);
-            let mint_msg: CosmosMsg<KujiraMsg> = DenomMsg::Mint {
-                denom: token_denom(&env),
-                amount: mint_amount,
-                recipient: info.sender,
-            }
-            .into();
-            Ok(Response::default().add_message(mint_msg))
-        }
-        ExecuteMsg::Withdraw {} => {
-            let amount = must_pay(&info, token_denom(&env).to_string().as_str())?;
-            let supply = deps.querier.query_supply(token_denom(&env).to_string())?;
-            let share = Decimal::from_ratio(amount, supply.amount);
-            let removed_amount = Broker::withdraw_reserves(deps.storage, share)?;
-            let burn_msg: CosmosMsg<KujiraMsg> = DenomMsg::Burn {
-                denom: token_denom(&env),
-                amount,
-            }
-            .into();
-            let send_msg: CosmosMsg<KujiraMsg> =
-                config.offer_denom.send(&info.sender, &removed_amount);
-
-            Ok(Response::default()
-                .add_message(burn_msg)
-                .add_message(send_msg))
         }
         ExecuteMsg::UpdateBroker { min_rate, duration } => {
             ensure_eq!(info.sender, config.owner, ContractError::Unauthorized {});
@@ -264,7 +313,11 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
     match msg {
         QueryMsg::Offer { amount } => {
             let broker = Broker::load(deps.storage)?;
-            let offer = broker.offer(deps, &rates, amount)?;
+            let reserve_status = deps.querier.query_wasm_smart(
+                &config.reserve_address,
+                &unstake::reserve::QueryMsg::Status {},
+            )?;
+            let offer = broker.offer(&reserve_status, &rates, amount)?;
             Ok(to_json_binary(&OfferResponse::from(offer))?)
         }
         QueryMsg::Delegates {} => {
@@ -282,8 +335,69 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
     }
 }
 
+#[cw_serde]
+pub struct MigrateMsg {
+    pub reserve_address: Addr,
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(_deps: DepsMut<KujiraQuery>, _env: Env, _msg: ()) -> StdResult<Response<KujiraMsg>> {
+pub fn migrate(
+    deps: DepsMut<KujiraQuery>,
+    env: Env,
+    msg: MigrateMsg,
+) -> StdResult<Response<KujiraMsg>> {
+    mod v_0_3_0 {
+        use cosmwasm_schema::cw_serde;
+        use cosmwasm_std::{Addr, Decimal, Uint128};
+        use cw_storage_plus::Item;
+        use kujira::Denom;
+        use unstake::adapter::Adapter;
+
+        #[cw_serde]
+        pub struct Config {
+            pub owner: Addr,
+            pub protocol_fee: Decimal,
+            pub protocol_fee_address: Addr,
+            pub delegate_code_id: u64,
+            pub vault_address: Addr,
+            pub offer_denom: Denom,
+            pub ask_denom: Denom,
+            pub adapter: Adapter,
+        }
+
+        pub const CONFIG: Item<Config> = Item::new("config");
+        pub const RESERVES: Item<(Uint128, Uint128)> = Item::new("reserves");
+    }
+    let old_cfg = v_0_3_0::CONFIG.load(deps.storage)?;
+    let cfg = Config {
+        owner: old_cfg.owner,
+        protocol_fee: old_cfg.protocol_fee,
+        protocol_fee_address: old_cfg.protocol_fee_address,
+        delegate_code_id: old_cfg.delegate_code_id,
+        reserve_address: msg.reserve_address,
+        vault_address: old_cfg.vault_address,
+        offer_denom: old_cfg.offer_denom,
+        ask_denom: old_cfg.ask_denom,
+        adapter: old_cfg.adapter,
+    };
+    cfg.save(deps.storage)?;
+
+    v_0_3_0::RESERVES.remove(deps.storage);
+
+    // Transfer denom authority to the reserve
+    let rsv_denom = format!("factory/{}/ursv", env.contract.address).into();
+    let denom_admin_msg = DenomMsg::ChangeAdmin {
+        denom: rsv_denom,
+        address: cfg.reserve_address.clone(),
+    };
+
+    // Call the Reserve's legacy migration utility
+    let migrate_msg = wasm_execute(
+        &cfg.reserve_address,
+        &unstake::reserve::ExecuteMsg::MigrateLegacyReserve {},
+        todo!(),
+    )?;
+
     Ok(Response::default())
 }
 
@@ -316,15 +430,47 @@ pub fn vault_repay_msg<T>(addr: &Addr, coins: Vec<Coin>) -> StdResult<CosmosMsg<
     .map(Into::into)
 }
 
-pub fn amount(denom: &Denom, funds: Vec<Coin>) -> StdResult<Uint128> {
-    let coin = funds.iter().find(|d| d.denom == denom.to_string());
-    match coin {
-        None => Err(StdError::not_found(denom.to_string())),
-        Some(Coin { amount, .. }) => Ok(*amount),
-    }
+pub fn vault_deposit_msg<T>(config: &Config, amount: Uint128) -> StdResult<CosmosMsg<T>> {
+    wasm_execute(
+        &config.vault_address,
+        &kujira_ghost::receipt_vault::ExecuteMsg::Deposit(
+            kujira_ghost::receipt_vault::DepositMsg { callback: None },
+        ),
+        config.offer_denom.coins(&amount),
+    )
+    .map(Into::into)
 }
 
-fn token_denom(env: &Env) -> Denom {
-    let addr = env.contract.address.clone();
-    format!("factory/{addr}/ursv").into()
+pub fn request_reserve_msg<T>(addr: &Addr, amount: Uint128) -> StdResult<CosmosMsg<T>> {
+    wasm_execute(
+        addr,
+        &unstake::reserve::ExecuteMsg::RequestReserves {
+            requested_amount: amount,
+            callback: None,
+        },
+        vec![],
+    )
+    .map(Into::into)
+}
+
+pub fn repay_reserve_msg<T>(
+    config: &Config,
+    original_amount: Uint128,
+    return_amount: Uint128,
+) -> StdResult<CosmosMsg<T>> {
+    wasm_execute(
+        &config.reserve_address,
+        &unstake::reserve::ExecuteMsg::ReturnReserves {
+            original_amount,
+            callback: None,
+        },
+        config.ghost_denom().coins(&return_amount),
+    )
+    .map(Into::into)
+}
+
+pub fn amount(denom: &Denom, funds: &Vec<Coin>) -> StdResult<Coin> {
+    let coin = funds.iter().find(|d| d.denom == denom.to_string());
+    coin.cloned()
+        .ok_or_else(|| StdError::not_found(denom.to_string()))
 }

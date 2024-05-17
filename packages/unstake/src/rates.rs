@@ -4,6 +4,7 @@ use crate::adapter::{Adapter, Unstake};
 
 pub struct Rates {
     pub vault_debt: Decimal,
+    pub vault_deposit: Decimal,
     pub vault_interest: Decimal,
     pub vault_max_interest: Decimal,
     pub provider_redemption: Decimal,
@@ -30,6 +31,7 @@ impl Rates {
 
         Ok(Self {
             vault_debt: status.debt_share_ratio,
+            vault_deposit: status.deposit_redemption_ratio,
             vault_interest: status.rate,
             vault_max_interest: Decimal::from_ratio(3u128, 1u128),
             provider_redemption,
