@@ -1,5 +1,6 @@
 use cosmwasm_std::{Instantiate2AddressError, OverflowError, StdError, Uint128};
 use cw_utils::PaymentError;
+use monetary::MonetaryError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -15,6 +16,9 @@ pub enum ContractError {
 
     #[error("{0}")]
     Payment(#[from] PaymentError),
+
+    #[error("InvalidAmount")]
+    Monetary(#[from] MonetaryError),
 
     #[error("Unauthorized")]
     Unauthorized {},

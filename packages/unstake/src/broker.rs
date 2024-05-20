@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     controller::InstantiateMsg,
-    denoms::{Ask, Base, Debt, Rcpt},
+    denoms::{Ask, Base, Debt},
     rates::Rates,
     reserve::StatusResponse as ReserveStatus,
     ContractError,
@@ -88,8 +88,7 @@ impl Broker {
         // in the following block, and remaining there for the whole period
         // This is something that we can look to relax in due course, but for now it provides an absolute guarantee of solvency
         let reserve_requirement = self.interest_amount(value, max_rate_shortfall);
-        let ghost_reserve_available = AmountU128::<Rcpt>::new(reserve_status.reserves_available);
-        let reserve_available = ghost_reserve_available.mul_floor(&rates.vault_deposit);
+        let reserve_available = reserve_status.available.mul_floor(&rates.vault_deposit);
 
         // Calculate the total that we'll charge in up-front interest
         let fee = self.interest_amount(value, offer_rate);

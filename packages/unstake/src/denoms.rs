@@ -8,3 +8,5 @@ pub struct Debt;
 pub struct Base;
 #[denom]
 pub struct Ask;
+#[denom]
+pub struct Rsv;

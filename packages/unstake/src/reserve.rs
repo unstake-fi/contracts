@@ -1,12 +1,15 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Decimal, Uint128};
-use kujira::{CallbackData, Denom};
+use cosmwasm_std::{Addr, Uint128};
+use kujira::CallbackData;
+use monetary::{AmountU128, Denom, Rate};
+
+use crate::denoms::{Base, Rcpt, Rsv};
 
 #[cw_serde]
 pub struct InstantiateMsg {
     pub owner: Addr,
     /// The base denom of the Reserve - ie the underlying bonded token
-    pub base_denom: Denom,
+    pub base_denom: Denom<Base>,
     /// The address of the associated GHOST vault
     pub ghost_vault_addr: Addr,
 }
@@ -19,19 +22,19 @@ pub enum ExecuteMsg {
     Withdraw { callback: Option<CallbackData> },
     /// Send reserves to a controller requesting them.
     RequestReserves {
-        requested_amount: Uint128,
+        requested_amount: AmountU128<Base>,
         callback: Option<CallbackData>,
     },
     /// Accept returned reserves from a controller. Updates Reserve rates, decreasing rates if
     /// reserves are not fully returned, or increasing rates if reserves are returned alongside fees.
     ReturnReserves {
-        original_amount: Uint128,
+        original_amount: AmountU128<Base>,
         callback: Option<CallbackData>,
     },
     /// Add the specified controller to the whitelist.
     AddController {
         controller: Addr,
-        limit: Option<Uint128>,
+        limit: Option<AmountU128<Base>>,
     },
     /// Remove the specified controller from the whitelist.
     RemoveController { controller: Addr },
@@ -39,7 +42,7 @@ pub enum ExecuteMsg {
     UpdateConfig { owner: Option<Addr> },
 
     /// Migration Utility for legacy controller denoms
-    MigrateLegacyReserve { reserves_deployed: Uint128 },
+    MigrateLegacyReserve { reserves_deployed: AmountU128<Base> },
 }
 
 #[cw_serde]
@@ -59,9 +62,9 @@ pub enum QueryMsg {
 #[cw_serde]
 pub struct ConfigResponse {
     pub owner: Addr,
-    pub base_denom: Denom,
-    pub rsv_denom: Denom,
-    pub ghost_denom: Denom,
+    pub base_denom: Denom<Base>,
+    pub rsv_denom: Denom<Rsv>,
+    pub ghost_denom: Denom<Rcpt>,
     pub ghost_vault_addr: Addr,
 }
 
@@ -73,18 +76,18 @@ pub struct WhitelistResponse {
 #[cw_serde]
 pub struct WhitelistItem {
     pub controller: Addr,
-    pub lent: Uint128,
-    pub limit: Option<Uint128>,
+    pub lent: AmountU128<Base>,
+    pub limit: Option<AmountU128<Base>>,
 }
 
 #[cw_serde]
 pub struct StatusResponse {
-    /// The total supply of rsv tokens
-    pub total_deposited: Uint128,
-    /// The amount of the reserve that is currently allocated. Denominated in ghost rcpt tokens.
-    pub reserves_deployed: Uint128,
+    /// The total amount deposited in the reserve, denominated in the base token.
+    pub total: AmountU128<Base>,
+    /// The amount of the reserve that is currently allocated. Denominated in the base token.
+    pub deployed: AmountU128<Base>,
     /// The amount of the reserve that is currently available. Denominated in ghost rcpt tokens.
-    pub reserves_available: Uint128,
+    pub available: AmountU128<Rcpt>,
     /// The redemption ratio of rsv tokens to ghost rcpt tokens
-    pub reserve_redemption_rate: Decimal,
+    pub reserve_redemption_rate: Rate<Base, Rsv>,
 }

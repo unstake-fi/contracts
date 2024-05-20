@@ -1,20 +1,22 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Decimal, StdResult, Storage, Uint128};
+use cosmwasm_std::{Decimal, StdResult, Storage};
 use cw_storage_plus::Item;
+use monetary::{AmountU128, Rate};
+use unstake::denoms::{Base, Rcpt, Rsv};
 
 #[cw_serde]
 pub struct State {
-    /// Total deposits, denominated in reserve denom.
-    pub total_deposits: Uint128,
-    /// Ratio of reserve token to redeemable ghost receipt tokens.
-    pub reserve_redemption_ratio: Decimal,
+    pub deployed: AmountU128<Base>,
+    pub available: AmountU128<Rcpt>,
+    pub reserve_redemption_ratio: Rate<Base, Rsv>,
 }
 
 impl State {
     pub fn new() -> Self {
         State {
-            total_deposits: Uint128::zero(),
-            reserve_redemption_ratio: Decimal::one(),
+            deployed: AmountU128::zero(),
+            available: AmountU128::zero(),
+            reserve_redemption_ratio: Rate::new(Decimal::one()).unwrap(),
         }
     }
 

@@ -1,8 +1,12 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Env, QuerierWrapper, StdResult, Storage};
 use cw_storage_plus::Item;
-use kujira::{Denom, KujiraQuery};
-use unstake::reserve::{ConfigResponse, InstantiateMsg};
+use kujira::KujiraQuery;
+use monetary::Denom;
+use unstake::{
+    denoms::{Base, Rcpt, Rsv},
+    reserve::{ConfigResponse, InstantiateMsg},
+};
 
 use kujira_ghost::receipt_vault::{
     ConfigResponse as GhostConfigResponse, QueryMsg as GhostQueryMsg,
@@ -15,9 +19,9 @@ pub const CONFIG: Item<Config> = Item::new("config");
 #[cw_serde]
 pub struct Config {
     pub owner: Addr,
-    pub base_denom: Denom,
-    pub rsv_denom: Denom,
-    pub ghost_denom: Denom,
+    pub base_denom: Denom<Base>,
+    pub rsv_denom: Denom<Rsv>,
+    pub ghost_denom: Denom<Rcpt>,
     pub ghost_vault_addr: Addr,
 }
 
@@ -29,12 +33,13 @@ impl Config {
     ) -> StdResult<Self> {
         let vault_cfg: GhostConfigResponse =
             querier.query_wasm_smart(&msg.ghost_vault_addr, &GhostQueryMsg::Config {})?;
-        let rsv_denom = format!("factory/{}/{}", env.contract.address, URSV);
+        let rsv_denom = Denom::new(format!("factory/{}/{}", env.contract.address, URSV));
+        let ghost_denom = Denom::new(vault_cfg.receipt_denom);
         Ok(Self {
             owner: msg.owner,
             base_denom: msg.base_denom,
-            rsv_denom: rsv_denom.into(),
-            ghost_denom: vault_cfg.receipt_denom.into(),
+            rsv_denom,
+            ghost_denom,
             ghost_vault_addr: msg.ghost_vault_addr,
         })
     }
