@@ -384,7 +384,7 @@ pub fn repay_reserve_msg<T>(
     .map(Into::into)
 }
 
-pub fn amount<T>(denom: &Denom<T>, funds: &Vec<Coin>) -> StdResult<CheckedCoin<T>> {
+pub fn amount<T>(denom: &Denom<T>, funds: &[Coin]) -> StdResult<CheckedCoin<T>> {
     let coin = funds.iter().find(|d| d.denom == denom.to_string());
     coin.map(|c| CheckedCoin::new(denom.clone(), AmountU128::new(c.amount)))
         .ok_or_else(|| StdError::not_found(denom.to_string()))

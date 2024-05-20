@@ -5,7 +5,7 @@ use crate::{
     rates::Rates,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Decimal, Timestamp, Uint128};
+use cosmwasm_std::{Addr, Binary, Decimal, Timestamp};
 use kujira::{CallbackData, CallbackMsg};
 use monetary::{AmountU128, Denom, Rate};
 

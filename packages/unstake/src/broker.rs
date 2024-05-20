@@ -140,6 +140,7 @@ impl Broker {
 
     /// Receives the original offer, debt tokens, and returned unbonded tokens from the delegate,
     /// reconciles the reserves
+    #[allow(clippy::type_complexity)]
     pub fn close_offer<T: CustomQuery>(
         &self,
         deps: DepsMut<T>,
