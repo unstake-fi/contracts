@@ -63,11 +63,9 @@ pub fn predict_address<T: CustomQuery>(
     let CodeInfoResponse { checksum, .. } = deps.querier.query_wasm_code_info(code_id)?;
     let salt = Binary::from(label.as_bytes().chunks(64).next().unwrap());
     let creator = deps.api.addr_canonicalize(env.contract.address.as_str())?;
-    let contract_addr = deps.api.addr_humanize(&instantiate2_address(
-        &checksum.as_slice(),
-        &creator,
-        &salt,
-    )?)?;
+    let contract_addr =
+        deps.api
+            .addr_humanize(&instantiate2_address(checksum.as_slice(), &creator, &salt)?)?;
 
     Ok((contract_addr, salt))
 }

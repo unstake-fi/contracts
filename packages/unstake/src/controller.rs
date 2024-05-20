@@ -1,11 +1,13 @@
 use crate::{
     adapter::Adapter,
     broker::{Offer, Status},
+    denoms::{Ask, Base, Debt},
     rates::Rates,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Decimal, Timestamp, Uint128};
 use kujira::{CallbackData, CallbackMsg, Denom};
+use monetary::{AmountU128, Rate};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -89,24 +91,24 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct OfferResponse {
-    pub amount: Uint128,
-    pub fee: Uint128,
+    pub amount: AmountU128<Base>,
+    pub fee: AmountU128<Base>,
 }
 
 #[cw_serde]
 pub struct RatesResponse {
-    pub vault_debt: Decimal,
+    pub vault_debt: Rate<Base, Debt>,
     pub vault_interest: Decimal,
     pub vault_max_interest: Decimal,
-    pub provider_redemption: Decimal,
+    pub provider_redemption: Rate<Base, Ask>,
 }
 
 #[cw_serde]
 pub struct StatusResponse {
     /// The total amount of base asset that has been requested for unbonding
-    pub total_base: Uint128,
+    pub total_base: AmountU128<Ask>,
     /// The total amount of quote asset that has been returned from unbonding
-    pub total_quote: Uint128,
+    pub total_quote: AmountU128<Base>,
 }
 
 #[cw_serde]
