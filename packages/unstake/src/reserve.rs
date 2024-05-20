@@ -39,7 +39,7 @@ pub enum ExecuteMsg {
     UpdateConfig { owner: Option<Addr> },
 
     /// Migration Utility for legacy controller denoms
-    MigrateLegacyReserve {},
+    MigrateLegacyReserve { reserves_deployed: Uint128 },
 }
 
 #[cw_serde]

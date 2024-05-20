@@ -13,12 +13,14 @@ use cw_storage_plus::Map;
 use cw_utils::{must_pay, NativeBalance};
 use kujira::{Denom, DenomMsg, KujiraMsg, KujiraQuery};
 use kujira_ghost::math::amt_to_rcpt_tokens;
+use monetary::AmountU128;
 use serde::Serialize;
 use unstake::broker::Status;
 use unstake::controller::{
     CallbackType, ConfigResponse, DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse,
     QueryMsg, RatesResponse, StatusResponse,
 };
+use unstake::denoms::Ask;
 use unstake::helpers::predict_address;
 use unstake::rates::Rates;
 use unstake::{broker::Broker, ContractError};
@@ -41,11 +43,8 @@ pub fn instantiate(
     config.save(deps.storage)?;
     let broker = Broker::from(msg);
     broker.save(deps.storage)?;
-    let create_msg: CosmosMsg<KujiraMsg> = DenomMsg::Create {
-        subdenom: "ursv".into(),
-    }
-    .into();
-    Ok(Response::default().add_message(create_msg))
+
+    Ok(Response::default())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -58,7 +57,7 @@ pub fn execute(
     let config = Config::load(deps.storage)?;
     match msg {
         ExecuteMsg::Unstake { max_fee, callback } => {
-            let amount = must_pay(&info, config.ask_denom.as_ref())?;
+            let amount = AmountU128::<Ask>::new(must_pay(&info, config.ask_denom.as_ref())?);
             let broker = Broker::load(deps.storage)?;
             let rates = Rates::load(deps.querier, &config.adapter, &config.vault_address)?;
             let reserve_status = deps.querier.query_wasm_smart(
@@ -368,6 +367,7 @@ pub fn migrate(
         pub const CONFIG: Item<Config> = Item::new("config");
         pub const RESERVES: Item<(Uint128, Uint128)> = Item::new("reserves");
     }
+    let mut msgs: Vec<CosmosMsg<_>> = vec![];
     let old_cfg = v_0_3_0::CONFIG.load(deps.storage)?;
     let cfg = Config {
         owner: old_cfg.owner,
@@ -382,6 +382,7 @@ pub fn migrate(
     };
     cfg.save(deps.storage)?;
 
+    let (_, reserves_deployed) = v_0_3_0::RESERVES.load(deps.storage)?;
     v_0_3_0::RESERVES.remove(deps.storage);
 
     // Transfer denom authority to the reserve
@@ -390,15 +391,17 @@ pub fn migrate(
         denom: rsv_denom,
         address: cfg.reserve_address.clone(),
     };
+    msgs.push(denom_admin_msg.into());
 
     // Call the Reserve's legacy migration utility
     let migrate_msg = wasm_execute(
         &cfg.reserve_address,
-        &unstake::reserve::ExecuteMsg::MigrateLegacyReserve {},
+        &unstake::reserve::ExecuteMsg::MigrateLegacyReserve { reserves_deployed },
         todo!(),
     )?;
+    msgs.push(migrate_msg.into());
 
-    Ok(Response::default())
+    Ok(Response::default().add_messages(msgs))
 }
 
 pub fn vault_borrow_msg<T>(

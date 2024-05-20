@@ -1,6 +1,10 @@
 use cosmwasm_std::{Addr, CustomQuery, Decimal, QuerierWrapper, StdResult};
+use monetary::Rate;
 
-use crate::adapter::{Adapter, Unstake};
+use crate::{
+    adapter::{Adapter, Unstake},
+    denoms::{Ask, Base, Debt, Rcpt},
+};
 
 pub struct Rates {
     pub vault_debt: Decimal,

@@ -7,5 +7,6 @@ pub mod helpers;
 pub mod math;
 pub mod rates;
 pub mod reserve;
+pub mod denoms;
 
 pub use error::ContractError;

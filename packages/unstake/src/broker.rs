@@ -3,13 +3,17 @@ use cosmwasm_std::{coin, Coin, CustomQuery, Decimal, DepsMut, StdResult, Storage
 use cw_storage_plus::Item;
 use cw_utils::NativeBalance;
 use kujira_ghost::math::{calculate_removed_debt, debt_to_liability};
+use monetary::{AmountU128, CheckedCoin, Exchange};
 use std::{
     cmp::{max, min},
     ops::{Add, Sub},
 };
 
 use crate::{
-    controller::InstantiateMsg, rates::Rates, reserve::StatusResponse as ReserveStatus,
+    controller::InstantiateMsg,
+    denoms::{Ask, Base, Debt, Rcpt},
+    rates::Rates,
+    reserve::StatusResponse as ReserveStatus,
     ContractError,
 };
 
@@ -60,7 +64,7 @@ impl Broker {
         }
     }
 
-    /// Make an offer for a givan `amount` of the staked token
+    /// Make an offer for a given `amount` of the staked token
     pub fn offer(
         &self,
         reserve_status: &ReserveStatus,
@@ -114,7 +118,7 @@ impl Broker {
         // Allocate the shortfall to fee, deduct from the amount returned
         let ghost_reserve_shortfall = ghost_reserve_requirement.sub(ghost_reserve_available);
         // Round up, maximizing fee to cover worst case.
-        let shortfall_fee = ghost_reserve_shortfall.div_ceil(rates.vault_deposit);
+        let shortfall_fee = ghost_reserve_shortfall.mul_ceil(rates.vault_deposit);
         let offer = Offer {
             unbond_amount,
             offer_amount: value.sub(fee).sub(shortfall_fee),
@@ -171,7 +175,7 @@ impl Broker {
         })?;
 
         let debt_rate = rates.vault_debt;
-        let rcpt_to_debt_rate = debt_rate / rates.vault_deposit;
+        let rcpt_to_debt_rate = rates.vault_deposit / debt_rate;
 
         let debt_value = debt_tokens.mul_ceil(debt_rate);
         let returned_value =
