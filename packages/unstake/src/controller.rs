@@ -1,13 +1,13 @@
 use crate::{
     adapter::Adapter,
     broker::{Offer, Status},
-    denoms::{Ask, Base, Debt},
+    denoms::{Ask, Base, Debt, Rcpt},
     rates::Rates,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Decimal, Timestamp, Uint128};
-use kujira::{CallbackData, CallbackMsg, Denom};
-use monetary::{AmountU128, Rate};
+use kujira::{CallbackData, CallbackMsg};
+use monetary::{AmountU128, Denom, Rate};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -19,10 +19,10 @@ pub struct InstantiateMsg {
     pub vault_address: Addr,
 
     /// The ask denom of the Broker - ie the LST/receipt token
-    pub ask_denom: Denom,
+    pub ask_denom: Denom<Ask>,
 
     /// The offer denom of the Broker - ie the underlying bonded token
-    pub offer_denom: Denom,
+    pub offer_denom: Denom<Base>,
 
     /// The amount of time in seconds that an unbonding takes
     pub unbonding_duration: u64,
@@ -37,7 +37,7 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     Unstake {
-        max_fee: Uint128,
+        max_fee: AmountU128<Base>,
         callback: Option<CallbackData>,
     },
 
@@ -74,7 +74,7 @@ pub enum CallbackType {
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(OfferResponse)]
-    Offer { amount: Uint128 },
+    Offer { amount: AmountU128<Ask> },
 
     #[returns(DelegatesResponse)]
     Delegates {},
@@ -119,8 +119,10 @@ pub struct ConfigResponse {
     pub delegate_code_id: u64,
     pub reserve_address: Addr,
     pub vault_address: Addr,
-    pub offer_denom: Denom,
-    pub ask_denom: Denom,
+    pub offer_denom: Denom<Base>,
+    pub ask_denom: Denom<Ask>,
+    pub debt_denom: Denom<Debt>,
+    pub ghost_denom: Denom<Rcpt>,
     pub adapter: Adapter,
 }
 

@@ -64,7 +64,7 @@ impl Broker {
     }
 
     /// Make an offer for a givan `amount` of the staked token
-    pub fn offer<T: CustomQuery>(
+    pub fn offer(
         &self,
         reserve_status: &ReserveStatus,
         rates: &Rates,

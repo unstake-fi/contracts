@@ -1,6 +1,7 @@
-use crate::{adapter::Adapter, broker::Offer};
+use crate::{adapter::Adapter, broker::Offer, denoms::Ask};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Coin};
+use cosmwasm_std::Addr;
+use monetary::CheckedCoin;
 
 /// A delegate is instantiated for each individual Unbonding transaction.
 /// We can't guarantee any specific ID to be returned from a staked token provider,
@@ -13,7 +14,7 @@ pub struct InstantiateMsg {
     pub controller: Addr,
 
     /// The amount of the base asset being sent, that should be relayed to the unbonding contract
-    pub unbond_amount: Coin,
+    pub unbond_amount: CheckedCoin<Ask>,
 
     /// The Offer created by the controller's Broker
     pub offer: Offer,

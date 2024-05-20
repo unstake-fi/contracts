@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::Addr;
 use kujira::CallbackData;
 use monetary::{AmountU128, Denom, Rate};
 
