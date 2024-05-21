@@ -45,6 +45,10 @@ impl From<InstantiateMsg> for Broker {
 }
 
 impl Broker {
+    pub fn init(&self, storage: &mut dyn Storage) -> StdResult<()> {
+        TOTALS.save(storage, &(AmountU128::zero(), AmountU128::zero()))
+    }
+
     pub fn save(&self, storage: &mut dyn Storage) -> StdResult<()> {
         BROKER.save(storage, self)
     }
@@ -130,10 +134,9 @@ impl Broker {
         deps: DepsMut<T>,
         offer: &Offer,
     ) -> Result<(), ContractError> {
-        TOTALS.update(deps.storage, |(mut total_base, total_quote)| {
-            total_base += offer.unbond_amount;
-            StdResult::Ok((total_base, total_quote))
-        })?;
+        let (mut total_base, total_quote) = TOTALS.may_load(deps.storage)?.unwrap_or_default();
+        total_base += offer.unbond_amount;
+        TOTALS.save(deps.storage, &(total_base, total_quote))?;
 
         Ok(())
     }
@@ -158,10 +161,8 @@ impl Broker {
             amount: mut returned_tokens,
         } = base_coin;
 
-        let (total_base, mut total_quote) = TOTALS.load(deps.storage).unwrap_or_default();
-        total_quote += returned_tokens
-            .checked_sub(offer.reserve_allocation)
-            .unwrap_or_default();
+        let (total_base, mut total_quote) = TOTALS.may_load(deps.storage)?.unwrap_or_default();
+        total_quote += returned_tokens;
         TOTALS.save(deps.storage, &(total_base, total_quote))?;
 
         let debt_rate = rates.vault_debt;
@@ -235,7 +236,7 @@ pub struct Status {
 
 impl Status {
     pub fn load(storage: &dyn Storage) -> Self {
-        let (total_base, total_quote) = TOTALS.load(storage).unwrap_or_default();
+        let (total_base, total_quote) = TOTALS.may_load(storage).ok().flatten().unwrap_or_default();
         Self {
             total_base,
             total_quote,

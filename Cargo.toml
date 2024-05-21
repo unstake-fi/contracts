@@ -23,7 +23,7 @@ cw-storage-plus = "2.0.0"
 cw-utils = "2.0.0"
 cw2 = "2.0.0"
 kujira = "1.1.0"
-kujira-rs-testing = "1.6.0"
+kujira-rs-testing = { version = "1.7.0", git = "https://github.com/Team-Kujira/kujira-rs.git", branch = "master" }
 kujira-ghost = "1.1.0"
 schemars = "0.8.19"
 serde = { version = "1.0.202", default-features = false, features = ["derive"] }
@@ -31,3 +31,7 @@ thiserror = { version = "1.0.61" }
 cw-multi-test = "2.0.1"
 unstake = { path = "./packages/unstake" }
 monetary = { path = "../../../entropic/monetary/crates/monetary" }
+
+[patch."https://github.com/Team-Kujira/kujira-rs.git"]
+# Use canonical kujira crate
+kujira = { version = "1.1.0" }

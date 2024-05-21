@@ -37,4 +37,7 @@ pub enum ContractError {
 
     #[error("Insolvent {debt_remaining} remaining")]
     Insolvent { debt_remaining: Uint128 },
+
+    #[error("RequestZero")]
+    RequestZero {},
 }

@@ -41,6 +41,7 @@ pub fn instantiate(
     let config = Config::new(msg.clone());
     config.save(deps.storage)?;
     let broker = Broker::from(msg);
+    broker.init(deps.storage)?;
     broker.save(deps.storage)?;
 
     Ok(Response::default())
@@ -71,18 +72,24 @@ pub fn execute(
 
             let borrow_amount = offer.offer_amount - offer.reserve_allocation;
 
-            let msgs: Vec<CosmosMsg<KujiraMsg>> = vec![
-                // Number one, request reserves from the reserve contract.
-                request_reserve_msg(&config.reserve_address, offer.reserve_allocation)?,
-                // Number two, borrow from GHOST
-                vault_borrow_msg(
-                    &config.vault_address,
-                    borrow_amount,
-                    Some(&CallbackType::GhostBorrow {
-                        offer: offer.clone(),
-                    }),
-                )?,
-                // Number three, return instant liquidity to sender.
+            let mut msgs = vec![];
+            // Number one, request reserves from the reserve contract.
+            if !offer.reserve_allocation.is_zero() {
+                msgs.push(request_reserve_msg(
+                    &config.reserve_address,
+                    offer.reserve_allocation,
+                )?);
+            }
+            // Number two, borrow from GHOST
+            msgs.push(vault_borrow_msg(
+                &config.vault_address,
+                borrow_amount,
+                Some(&CallbackType::GhostBorrow {
+                    offer: offer.clone(),
+                }),
+            )?);
+            // Number three, return instant liquidity to sender.
+            msgs.push(
                 callback
                     .map(|cb| cb.to_message(&info.sender, Empty {}, []).unwrap())
                     .unwrap_or(
@@ -91,7 +98,7 @@ pub fn execute(
                             .send(&info.sender, offer.offer_amount)
                             .into(),
                     ),
-            ];
+            );
 
             let event = Event::new("unstake/controller/unstake")
                 .add_attribute("amount", amount)
@@ -150,7 +157,7 @@ pub fn execute(
             DELEGATES
                 .load(deps.storage, info.sender.clone())
                 .map_err(|_| ContractError::Unauthorized {})?;
-            DELEGATES.remove(deps.storage, info.sender);
+            DELEGATES.remove(deps.storage, info.sender.clone());
 
             let debt = amount(&config.debt_denom, &info.funds)?;
             let base = amount(&config.offer_denom, &info.funds)?;
@@ -174,10 +181,13 @@ pub fn execute(
             let ghost_repay_msg = vault_repay_msg(&config.vault_address, repay_funds.clone())?;
             msgs.push(ghost_repay_msg);
 
-            // the legacy reserve_allocation was denominated in base
-            let reserve_repay_msg =
-                repay_reserve_msg(&config, offer.reserve_allocation, reserve_return)?;
-            msgs.push(reserve_repay_msg);
+            // return reserves, with any fees
+            let reserve_return_amount = reserve_return + reserve_fee;
+            if !reserve_return_amount.is_zero() {
+                let reserve_repay_msg =
+                    repay_reserve_msg(&config, offer.reserve_allocation, reserve_return_amount)?;
+                msgs.push(reserve_repay_msg);
+            }
 
             // Finally, send the protocol fee to the fee address
             if !protocol_fee.is_zero() {
@@ -188,7 +198,7 @@ pub fn execute(
                         .into(),
                 );
             }
-            let event: Event = Event::new("unstake/controller/legacy-complete")
+            let event: Event = Event::new("unstake/controller/complete")
                 .add_attribute("returned_tokens", base.amount)
                 .add_attribute(
                     "repay_amount",
@@ -199,7 +209,8 @@ pub fn execute(
                         .join(", "),
                 )
                 .add_attribute("protocol_fee_amount", protocol_fee)
-                .add_attribute("reserve_fee", reserve_fee);
+                .add_attribute("reserve_fee", reserve_fee)
+                .add_attribute("delegate", info.sender);
             Ok(Response::default().add_event(event).add_messages(msgs))
         }
         ExecuteMsg::UpdateBroker { min_rate, duration } => {

@@ -155,6 +155,7 @@ pub fn execute(
         } => {
             let maybe_limit = WHITELISTED_CONTROLLERS.may_load(deps.storage, &info.sender)?;
             ensure!(maybe_limit.is_some(), ContractError::Unauthorized {});
+            ensure!(!requested_amount.is_zero(), ContractError::RequestZero {});
 
             // Ensure we don't exceed the limit for this controller
             let (mut lent, limit) = maybe_limit.unwrap();
@@ -234,6 +235,7 @@ pub fn execute(
                 vec![config.base_denom.coin(received).into()],
             )?;
             state.available += received.div_floor(&ghost_rate);
+            state.deployed -= original_amount;
 
             state.save(deps.storage)?;
 

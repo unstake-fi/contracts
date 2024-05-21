@@ -27,8 +27,8 @@ pub struct Config {
 
 impl Config {
     pub fn new(msg: InstantiateMsg) -> Self {
-        let ghost = Denom::new(format!("factory/{}/udebt", msg.vault_address));
-        let debt = Denom::new(format!("factory/{}/urcpt", msg.vault_address));
+        let ghost = Denom::new(format!("factory/{}/urcpt", msg.vault_address));
+        let debt = Denom::new(format!("factory/{}/udebt", msg.vault_address));
         Self {
             owner: msg.owner,
             protocol_fee: msg.protocol_fee,

@@ -44,4 +44,4 @@ monetary = { workspace = true }
 cw-multi-test = { workspace = true }
 unstake-delegate = { path = "../delegate" }
 kujira-rs-testing = { workspace = true }
-cw1-whitelist = "1.1.2"
+anyhow = "1"

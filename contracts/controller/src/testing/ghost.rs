@@ -10,9 +10,11 @@ use cosmwasm_std::{
     MessageInfo, Response, StdResult, Timestamp, Uint128,
 };
 use cw_storage_plus::Item;
-use cw_utils::NativeBalance;
+use cw_utils::{must_pay, NativeBalance};
 use kujira::{Denom, DenomMsg, KujiraMsg, KujiraQuery};
-use kujira_ghost::receipt_vault::{ExecuteMsg, InstantiateMsg, QueryMsg, StatusResponse};
+use kujira_ghost::receipt_vault::{
+    ConfigResponse, ExecuteMsg, InstantiateMsg, QueryMsg, StatusResponse,
+};
 
 static INIT: Item<InstantiateMsg> = Item::new("init");
 static TS: Item<(Timestamp, Decimal)> = Item::new("ts");
@@ -26,7 +28,15 @@ pub fn instantiate(
 ) -> StdResult<Response<KujiraMsg>> {
     INIT.save(deps.storage, &msg)?;
     TS.save(deps.storage, &(env.block.time, Decimal::from_str("1.12")?))?;
-    Ok(Response::default())
+    let denom_msgs = vec![
+        DenomMsg::Create {
+            subdenom: "udebt".into(),
+        },
+        DenomMsg::Create {
+            subdenom: "urcpt".into(),
+        },
+    ];
+    Ok(Response::default().add_messages(denom_msgs))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -38,17 +48,48 @@ pub fn execute(
 ) -> StdResult<Response<KujiraMsg>> {
     let init = INIT.load(deps.storage)?;
     let debt_token_denom = Denom::from(format!("factory/{}/udebt", env.contract.address));
+    let rcpt_token_denom = Denom::from(format!("factory/{}/urcpt", env.contract.address));
     let denom = init.denom;
     match msg {
-        ExecuteMsg::Deposit(_) => Ok(Response::default()),
-        ExecuteMsg::Withdraw(_) => todo!(),
+        ExecuteMsg::Deposit(msg) => {
+            let rec = must_pay(&info, denom.as_ref()).unwrap();
+            // just dummy mint
+            let rcpt_mint_msg = CosmosMsg::Custom(KujiraMsg::Denom(DenomMsg::Mint {
+                denom: rcpt_token_denom.clone(),
+                amount: rec,
+                recipient: env.contract.address,
+            }));
+
+            let msg = msg
+                .callback
+                .map_or(rcpt_token_denom.send(&info.sender, &rec), |cb| {
+                    cb.to_message(&info.sender, Empty {}, vec![rcpt_token_denom.coin(&rec)])
+                        .unwrap()
+                });
+
+            Ok(Response::default().add_messages(vec![rcpt_mint_msg, msg]))
+        }
+        ExecuteMsg::Withdraw(msg) => {
+            let rec = must_pay(&info, rcpt_token_denom.as_ref()).unwrap();
+            let rcpt_burn_msg = CosmosMsg::Custom(KujiraMsg::Denom(DenomMsg::Burn {
+                denom: rcpt_token_denom.clone(),
+                amount: rec,
+            }));
+
+            let msg = msg.callback.map_or(denom.send(&info.sender, &rec), |cb| {
+                cb.to_message(&info.sender, Empty {}, vec![denom.coin(&rec)])
+                    .unwrap()
+            });
+
+            Ok(Response::default().add_messages(vec![rcpt_burn_msg, msg]))
+        }
         ExecuteMsg::Borrow(msg) => {
             let (_rate, debt_share_ratio) = rates(deps.as_ref(), env.block.time)?;
             let debt_shares = msg.amount.div_ceil(debt_share_ratio);
             TS.save(deps.storage, &(env.block.time, debt_share_ratio))?;
 
             let debt_mint_msg = CosmosMsg::Custom(KujiraMsg::Denom(DenomMsg::Mint {
-                denom: debt_token_denom.clone().into(),
+                denom: debt_token_denom.clone(),
                 amount: debt_shares,
                 recipient: env.contract.address,
             }));
@@ -77,12 +118,12 @@ pub fn execute(
             let mut debt_tokens = Uint128::zero();
             let mut repay_amount = Uint128::zero();
 
-            for Coin { amount, denom } in info.funds {
-                if denom == debt_token_denom.to_string() {
+            for Coin { amount, denom: d } in info.funds {
+                if d == debt_token_denom.to_string() {
                     debt_tokens = amount
                 }
 
-                if denom == denom.to_string() {
+                if d == denom.to_string() {
                     repay_amount = amount
                 }
             }
@@ -91,14 +132,14 @@ pub fn execute(
             let repay_requirement = debt_tokens.mul_ceil(debt_share_ratio);
 
             let debt_burn_msg = CosmosMsg::Custom(KujiraMsg::Denom(DenomMsg::Burn {
-                denom: debt_token_denom.clone().into(),
+                denom: debt_token_denom.clone(),
                 amount: debt_tokens,
             }));
 
             if repay_requirement.ne(&repay_amount) {
-                return Err(cosmwasm_std::StdError::GenericErr {
-                    msg: "Insufficient repay amount".to_string(),
-                });
+                return Err(cosmwasm_std::StdError::generic_err(
+                    "Insufficient repay amount".to_string(),
+                ));
             }
             // Basic assertion that the repay amount
 
@@ -122,14 +163,22 @@ fn rates<T: CustomQuery>(deps: Deps<T>, now: Timestamp) -> StdResult<(Decimal, D
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps<KujiraQuery>, env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    let init = INIT.load(deps.storage)?;
     let (rate, debt_share_ratio) = rates(deps, env.block.time)?;
     match msg {
-        QueryMsg::Config {} => todo!(),
+        QueryMsg::Config {} => to_json_binary(&ConfigResponse {
+            owner: init.owner,
+            denom: init.denom,
+            oracle: init.oracle,
+            decimals: init.decimals,
+            receipt_denom: format!("factory/{}/urcpt", env.contract.address),
+            debt_token_denom: format!("factory/{}/udebt", env.contract.address),
+        }),
         QueryMsg::Status {} => to_json_binary(&StatusResponse {
             deposited: Uint128::zero(),
             borrowed: Uint128::zero(),
             rate,
-            deposit_redemption_ratio: Decimal::zero(),
+            deposit_redemption_ratio: Decimal::one(),
             debt_share_ratio,
         }),
         QueryMsg::MarketParams { .. } => todo!(),

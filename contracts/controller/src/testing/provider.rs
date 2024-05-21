@@ -33,7 +33,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::WithdrawUnbonded { .. } => {
             let (time, pending) = PENDING.load(deps.storage)?;
-            let amount = pending * rate;
+            let amount = pending.mul_floor(rate);
             if env.block.time.seconds() - time.seconds() < 14 * 24 * 60 * 60 {
                 return Ok(Response::default());
             }
