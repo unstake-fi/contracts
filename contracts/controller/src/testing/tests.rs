@@ -72,7 +72,7 @@ fn setup(
                 denom_creation_fee: Uint128::zero(),
                 utilization_to_curve: vec![],
             },
-            &vec![],
+            &[],
             "ghost",
             None,
         )
@@ -83,7 +83,7 @@ fn setup(
             provider_code_id,
             app.api().addr_make("provider"),
             &(),
-            &vec![],
+            &[],
             "provider",
             None,
         )
@@ -98,7 +98,7 @@ fn setup(
                 ghost_vault_addr: vault_address.clone(),
                 base_denom: monetary::Denom::new("quote"),
             },
-            &vec![],
+            &[],
             "reserve",
             None,
         )
@@ -123,7 +123,7 @@ fn setup(
                 // 3%
                 min_rate: Decimal::from_str("0.03").unwrap(),
             },
-            &vec![],
+            &[],
             "controller",
             None,
         )
@@ -137,7 +137,7 @@ fn setup(
             controller: controller_address.clone(),
             limit: controller_limit,
         },
-        &vec![],
+        &[],
     )
     .unwrap();
 
@@ -312,7 +312,7 @@ fn quote_min_rate_clamped() {
             min_rate: Some(Decimal::from_str("1.1").unwrap()),
             duration: None,
         },
-        &vec![],
+        &[],
     )
     .unwrap();
 
@@ -622,7 +622,7 @@ fn close_offer() {
         api.addr_make("random"),
         delegate.clone(),
         &unstake::delegate::ExecuteMsg::Complete {},
-        &vec![],
+        &[],
     )
     .unwrap();
 
@@ -753,7 +753,7 @@ fn close_early_offer() {
         api.addr_make("random"),
         delegate.clone(),
         &unstake::delegate::ExecuteMsg::Complete {},
-        &vec![],
+        &[],
     )
     .unwrap_err();
 }
@@ -826,7 +826,7 @@ fn close_losing_offer() {
         api.addr_make("random"),
         delegate.clone(),
         &unstake::delegate::ExecuteMsg::Complete {},
-        &vec![],
+        &[],
     )
     .unwrap();
 
@@ -978,7 +978,7 @@ fn reserves() {
         api.addr_make("random"),
         delegate.clone(),
         &unstake::delegate::ExecuteMsg::Complete {},
-        &vec![],
+        &[],
     )
     .unwrap();
 

@@ -103,7 +103,8 @@ pub fn execute(
             let event = Event::new("unstake/controller/unstake")
                 .add_attribute("amount", amount)
                 .add_attribute("rates", rates)
-                .add_attribute("offer", offer);
+                .add_attribute("offer", offer)
+                .add_attribute("sender", info.sender);
 
             Ok(Response::default().add_event(event).add_messages(msgs))
         }

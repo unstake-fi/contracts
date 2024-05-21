@@ -268,7 +268,9 @@ pub fn execute(
             config.save(deps.storage)?;
             Ok(Response::default())
         }
-        ExecuteMsg::MigrateLegacyReserve { reserves_deployed } => todo!(),
+        ExecuteMsg::MigrateLegacyReserve {
+            reserves_deployed: _,
+        } => todo!(),
     }
 }
 
