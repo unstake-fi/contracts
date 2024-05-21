@@ -370,14 +370,24 @@ fn execute_offer() {
     )
     .unwrap();
 
-    let amount = AmountU128::new(Uint128::from(10000u128));
+    // Executing with max_fee = 400 < 411 should fail
+    app.execute_contract(
+        api.addr_make("unstaker"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Unstake {
+            callback: None,
+            max_fee: AmountU128::new(Uint128::from(400u128)),
+        },
+        &coins(10000u128, "base"),
+    )
+    .unwrap_err();
 
     app.execute_contract(
         api.addr_make("unstaker"),
         contracts.controller.clone(),
         &ExecuteMsg::Unstake {
             callback: None,
-            max_fee: amount,
+            max_fee: AmountU128::new(Uint128::from(500u128)),
         },
         &coins(10000u128, "base"),
     )

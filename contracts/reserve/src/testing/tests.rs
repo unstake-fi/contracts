@@ -346,6 +346,33 @@ fn test_request_reserves_exceeding_limit() {
 }
 
 #[test]
+fn test_request_reserves_exceeding_liquidity() {
+    let api = MockApiBech32::new("kujira");
+    let balances = vec![
+        (api.addr_make("funder"), coins(1000u128, "base")),
+        (api.addr_make("controller"), vec![]),
+    ];
+    let (mut app, contracts) = setup(balances);
+
+    let funder = app.api().addr_make("funder");
+    let controller = app.api().addr_make("controller");
+    let owner = app.api().addr_make("owner");
+
+    fund(&mut app, &contracts, &funder, Uint128::new(1000)).unwrap();
+    add_controller(
+        &mut app,
+        &contracts,
+        &owner,
+        &controller,
+        Uint128::new(10000),
+    )
+    .unwrap();
+
+    let result = request_reserves(&mut app, &contracts, &controller, Uint128::new(1001));
+    assert!(result.is_err());
+}
+
+#[test]
 fn test_return_reserves_exceeding_original_amount() {
     let api = MockApiBech32::new("kujira");
     let balances = vec![
@@ -649,4 +676,37 @@ fn test_return_reserves_with_different_amount() {
         status.reserve_redemption_rate.rate(),
         Decimal::from_ratio(1100u128, 1000u128)
     );
+}
+
+#[test]
+fn test_request_reserves_unauthorized() {
+    let api = MockApiBech32::new("kujira");
+    let balances = vec![
+        (api.addr_make("funder"), coins(1000000u128, "base")),
+        (api.addr_make("controller"), vec![]),
+    ];
+    let (mut app, contracts) = setup(balances);
+
+    let funder = app.api().addr_make("funder");
+    let controller = app.api().addr_make("controller");
+
+    app.execute_contract(
+        funder.clone(),
+        contracts.reserve.clone(),
+        &ExecuteMsg::Fund { callback: None },
+        &coins(1000u128, "base"),
+    )
+    .unwrap();
+
+    let result = app.execute_contract(
+        controller.clone(),
+        contracts.reserve.clone(),
+        &ExecuteMsg::RequestReserves {
+            requested_amount: AmountU128::new(500u128.into()),
+            callback: None,
+        },
+        &[],
+    );
+
+    assert!(result.is_err());
 }
