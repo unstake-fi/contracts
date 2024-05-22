@@ -10,3 +10,6 @@ pub struct Base;
 pub struct Ask;
 #[denom]
 pub struct Rsv;
+
+#[denom]
+pub struct LegacyRsv;

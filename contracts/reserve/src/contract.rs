@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use crate::config::Config;
-use crate::state::State;
+use crate::state::{State, LEGACY_DENOMS};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
@@ -10,6 +10,7 @@ use cosmwasm_std::{
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
+use cw_utils::{one_coin, PaymentError};
 use kujira::{DenomMsg, KujiraMsg, KujiraQuery};
 use kujira_ghost::basic_vault::DepositMsg;
 use kujira_ghost::receipt_vault::{
@@ -17,7 +18,7 @@ use kujira_ghost::receipt_vault::{
     StatusResponse as GhostStatusResponse, WithdrawMsg,
 };
 use monetary::{must_pay, AmountU128, Exchange, Rate};
-use unstake::denoms::{Base, Rcpt};
+use unstake::denoms::{Base, LegacyRsv, Rcpt};
 use unstake::reserve::{
     ConfigResponse, ExecuteMsg, InstantiateMsg, QueryMsg, StatusResponse, WhitelistItem,
     WhitelistResponse,
@@ -269,8 +270,64 @@ pub fn execute(
             Ok(Response::default())
         }
         ExecuteMsg::MigrateLegacyReserve {
-            reserves_deployed: _,
-        } => todo!(),
+            reserves_deployed,
+            legacy_denom,
+            legacy_redemption_rate,
+        } => {
+            // Assert authorized controller
+            let maybe_limit = WHITELISTED_CONTROLLERS.may_load(deps.storage, &info.sender)?;
+            ensure!(maybe_limit.is_some(), ContractError::Unauthorized {});
+
+            // Add the "deployed" amount to the controller's lent amount
+            let (mut lent, limit) = maybe_limit.unwrap();
+            lent = lent.checked_add(reserves_deployed)?;
+            WHITELISTED_CONTROLLERS.save(deps.storage, &info.sender, &(lent, limit))?;
+
+            // Deposit to GHOST
+            let base_amount = must_pay(&info, &config.base_denom)?;
+            let ghost_rate = ghost_rate(&deps.querier, &config)?;
+            let received = base_amount.div_floor(&ghost_rate);
+            let ghost_msg = wasm_execute(
+                &config.ghost_vault_addr,
+                &GhostExecuteMsg::Deposit(DepositMsg { callback: None }),
+                coins(base_amount.u128(), &config.base_denom),
+            )?;
+
+            // Update state. Available reserves are increased by the received amount from GHOST,
+            // and deployed amount is specified by the controller that we're migrating from.
+            state.available += received;
+            state.deployed += reserves_deployed;
+
+            // Snapshots the current rate of Legacy Reserve to Reserve, and saves it.
+            let legacy_to_rsv = state.reserve_redemption_ratio.inv() * legacy_redemption_rate;
+            LEGACY_DENOMS.save(deps.storage, legacy_denom.to_string(), &legacy_to_rsv)?;
+
+            Ok(Response::default().add_message(ghost_msg))
+        }
+        ExecuteMsg::ExchangeLegacyReserve {} => {
+            let received = one_coin(&info)?;
+            let rate = LEGACY_DENOMS
+                .may_load(deps.storage, received.denom.clone())?
+                .ok_or(PaymentError::ExtraDenom(received.denom.clone()))?;
+
+            let amount = AmountU128::<LegacyRsv>::new(received.amount);
+            let return_amount = amount.mul_floor(&rate);
+
+            let mint_msg = DenomMsg::Mint {
+                denom: config.rsv_denom.to_string().into(),
+                amount: return_amount.uint128(),
+                recipient: info.sender.clone(),
+            };
+
+            let burn_msg = DenomMsg::Burn {
+                denom: received.denom.into(),
+                amount: received.amount,
+            };
+
+            Ok(Response::default()
+                .add_message(mint_msg)
+                .add_message(burn_msg))
+        }
     }
 }
 

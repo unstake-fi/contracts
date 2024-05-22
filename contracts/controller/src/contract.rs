@@ -5,14 +5,14 @@ use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure_eq, to_json_binary, wasm_execute, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Empty,
-    Env, Event, MessageInfo, Order, Response, StdError, StdResult, Timestamp, WasmMsg,
+    ensure_eq, to_json_binary, wasm_execute, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut,
+    Empty, Env, Event, MessageInfo, Order, Response, StdError, StdResult, Timestamp, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::NativeBalance;
 use kujira::{DenomMsg, KujiraMsg, KujiraQuery};
-use monetary::{must_pay, AmountU128, CheckedCoin, Denom};
+use monetary::{must_pay, AmountU128, CheckedCoin, Denom, Rate};
 use serde::Serialize;
 use unstake::broker::Status;
 use unstake::controller::{
@@ -315,24 +315,33 @@ pub fn migrate(
     };
     cfg.save(deps.storage)?;
 
-    let (_, reserves_deployed) = v_0_3_0::RESERVES.load(deps.storage)?;
+    let (reserves_available, reserves_deployed) = v_0_3_0::RESERVES.load(deps.storage)?;
     v_0_3_0::RESERVES.remove(deps.storage);
 
     // Transfer denom authority to the reserve
-    let rsv_denom = format!("factory/{}/ursv", env.contract.address).into();
+    let rsv_denom: kujira::Denom = format!("factory/{}/ursv", env.contract.address).into();
     let denom_admin_msg = DenomMsg::ChangeAdmin {
-        denom: rsv_denom,
+        denom: rsv_denom.clone(),
         address: cfg.reserve_address.clone(),
     };
     msgs.push(denom_admin_msg.into());
 
-    // Call the Reserve's legacy migration utility
+    // Call the Reserve's legacy migration utility, transferring all reserves to the Reserve
+    let rsv_supply = deps.querier.query_supply(rsv_denom.to_string())?;
+    let total_reserve = reserves_available + reserves_available;
+    let reserve_redemption_rate = Decimal::from_ratio(rsv_supply.amount, total_reserve);
+
+    let to_send_base = deps
+        .querier
+        .query_balance(&env.contract.address, cfg.offer_denom.to_string())?;
     let migrate_msg = wasm_execute(
         &cfg.reserve_address,
         &unstake::reserve::ExecuteMsg::MigrateLegacyReserve {
             reserves_deployed: AmountU128::new(reserves_deployed),
+            legacy_denom: Denom::new(rsv_denom.to_string()),
+            legacy_redemption_rate: Rate::new(reserve_redemption_rate).unwrap(),
         },
-        todo!(),
+        vec![to_send_base],
     )?;
     msgs.push(migrate_msg.into());
 

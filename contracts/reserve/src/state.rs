@@ -1,8 +1,8 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Decimal, StdResult, Storage};
-use cw_storage_plus::Item;
+use cw_storage_plus::{Item, Map};
 use monetary::{AmountU128, Rate};
-use unstake::denoms::{Base, Rcpt, Rsv};
+use unstake::denoms::{Base, LegacyRsv, Rcpt, Rsv};
 
 #[cw_serde]
 pub struct State {
@@ -36,3 +36,5 @@ impl Default for State {
 }
 
 pub const STATE: Item<State> = Item::new("state");
+
+pub const LEGACY_DENOMS: Map<String, Rate<Rsv, LegacyRsv>> = Map::new("legacy_denoms");

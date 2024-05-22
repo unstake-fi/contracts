@@ -3,7 +3,7 @@ use cosmwasm_std::Addr;
 use kujira::CallbackData;
 use monetary::{AmountU128, Denom, Rate};
 
-use crate::denoms::{Base, Rcpt, Rsv};
+use crate::denoms::{Base, LegacyRsv, Rcpt, Rsv};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -42,7 +42,14 @@ pub enum ExecuteMsg {
     UpdateConfig { owner: Option<Addr> },
 
     /// Migration Utility for legacy controller denoms
-    MigrateLegacyReserve { reserves_deployed: AmountU128<Base> },
+    MigrateLegacyReserve {
+        reserves_deployed: AmountU128<Base>,
+        legacy_denom: Denom<LegacyRsv>,
+        legacy_redemption_rate: Rate<Base, LegacyRsv>,
+    },
+
+    /// Exchange a legacy reserve token for the new reserve token
+    ExchangeLegacyReserve {},
 }
 
 #[cw_serde]
