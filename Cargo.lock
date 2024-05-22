@@ -640,6 +640,8 @@ checksum = "6c8640c5d730cb13ebd907d8d04b52f55ac9a2eec55b440c8892f40d56c76c1d"
 [[package]]
 name = "monetary"
 version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87c17a63f73263e53bf4e07d25e9fd7d05a1c99ef8ab313c3c7c7f1986061529"
 dependencies = [
  "cosmwasm-std",
  "monetary-macros",
@@ -651,6 +653,8 @@ dependencies = [
 [[package]]
 name = "monetary-macros"
 version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a78fae41653d41eccd24b1aac1ccf9a3003f65342113368f8f3fefacaa3e2a1"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
