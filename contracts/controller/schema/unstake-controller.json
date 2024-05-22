@@ -1,6 +1,6 @@
 {
   "contract_name": "unstake-controller",
-  "contract_version": "0.1.0",
+  "contract_version": "0.3.0",
   "idl_version": "1.0.0",
   "instantiate": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -15,6 +15,7 @@
       "owner",
       "protocol_fee",
       "protocol_fee_address",
+      "reserve_address",
       "unbonding_duration",
       "vault_address"
     ],
@@ -29,11 +30,7 @@
       },
       "ask_denom": {
         "description": "The ask denom of the Broker - ie the LST/receipt token",
-        "allOf": [
-          {
-            "$ref": "#/definitions/Denom"
-          }
-        ]
+        "type": "string"
       },
       "delegate_code_id": {
         "type": "integer",
@@ -50,11 +47,7 @@
       },
       "offer_denom": {
         "description": "The offer denom of the Broker - ie the underlying bonded token",
-        "allOf": [
-          {
-            "$ref": "#/definitions/Denom"
-          }
-        ]
+        "type": "string"
       },
       "owner": {
         "$ref": "#/definitions/Addr"
@@ -63,6 +56,9 @@
         "$ref": "#/definitions/Decimal"
       },
       "protocol_fee_address": {
+        "$ref": "#/definitions/Addr"
+      },
+      "reserve_address": {
         "$ref": "#/definitions/Addr"
       },
       "unbonding_duration": {
@@ -94,6 +90,18 @@
           {
             "type": "object",
             "required": [
+              "gravedigger"
+            ],
+            "properties": {
+              "gravedigger": {
+                "$ref": "#/definitions/Gravedigger"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
               "quark"
             ],
             "properties": {
@@ -113,14 +121,27 @@
         "description": "A fixed-point decimal value with 18 fractional digits, i.e. Decimal(1_000_000_000_000_000_000) == 1.0\n\nThe greatest possible value that can be represented is 340282366920938463463.374607431768211455 (which is (2^128 - 1) / 10^18)",
         "type": "string"
       },
-      "Denom": {
-        "type": "string"
-      },
       "Eris": {
         "$ref": "#/definitions/Addr"
       },
+      "Gravedigger": {
+        "$ref": "#/definitions/Addr"
+      },
       "Quark": {
-        "$ref": "#/definitions/Eris"
+        "type": "object",
+        "required": [
+          "hub",
+          "liq"
+        ],
+        "properties": {
+          "hub": {
+            "$ref": "#/definitions/Addr"
+          },
+          "liq": {
+            "$ref": "#/definitions/Addr"
+          }
+        },
+        "additionalProperties": false
       }
     }
   },
@@ -189,34 +210,6 @@
                 "$ref": "#/definitions/Offer"
               }
             },
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false
-      },
-      {
-        "description": "Adds funds to the reserve",
-        "type": "object",
-        "required": [
-          "fund"
-        ],
-        "properties": {
-          "fund": {
-            "type": "object",
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false
-      },
-      {
-        "description": "Withdraw deposited reserve funds",
-        "type": "object",
-        "required": [
-          "withdraw"
-        ],
-        "properties": {
-          "withdraw": {
-            "type": "object",
             "additionalProperties": false
           }
         },
@@ -489,11 +482,14 @@
       "required": [
         "adapter",
         "ask_denom",
+        "debt_denom",
         "delegate_code_id",
+        "ghost_denom",
         "offer_denom",
         "owner",
         "protocol_fee",
         "protocol_fee_address",
+        "reserve_address",
         "vault_address"
       ],
       "properties": {
@@ -501,15 +497,21 @@
           "$ref": "#/definitions/Adapter"
         },
         "ask_denom": {
-          "$ref": "#/definitions/Denom"
+          "type": "string"
+        },
+        "debt_denom": {
+          "type": "string"
         },
         "delegate_code_id": {
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         },
+        "ghost_denom": {
+          "type": "string"
+        },
         "offer_denom": {
-          "$ref": "#/definitions/Denom"
+          "type": "string"
         },
         "owner": {
           "$ref": "#/definitions/Addr"
@@ -518,6 +520,9 @@
           "$ref": "#/definitions/Decimal"
         },
         "protocol_fee_address": {
+          "$ref": "#/definitions/Addr"
+        },
+        "reserve_address": {
           "$ref": "#/definitions/Addr"
         },
         "vault_address": {
@@ -536,6 +541,18 @@
               "properties": {
                 "eris": {
                   "$ref": "#/definitions/Eris"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": [
+                "gravedigger"
+              ],
+              "properties": {
+                "gravedigger": {
+                  "$ref": "#/definitions/Gravedigger"
                 }
               },
               "additionalProperties": false
@@ -562,14 +579,27 @@
           "description": "A fixed-point decimal value with 18 fractional digits, i.e. Decimal(1_000_000_000_000_000_000) == 1.0\n\nThe greatest possible value that can be represented is 340282366920938463463.374607431768211455 (which is (2^128 - 1) / 10^18)",
           "type": "string"
         },
-        "Denom": {
-          "type": "string"
-        },
         "Eris": {
           "$ref": "#/definitions/Addr"
         },
+        "Gravedigger": {
+          "$ref": "#/definitions/Addr"
+        },
         "Quark": {
-          "$ref": "#/definitions/Eris"
+          "type": "object",
+          "required": [
+            "hub",
+            "liq"
+          ],
+          "properties": {
+            "hub": {
+              "$ref": "#/definitions/Addr"
+            },
+            "liq": {
+              "$ref": "#/definitions/Addr"
+            }
+          },
+          "additionalProperties": false
         }
       }
     },
@@ -679,28 +709,10 @@
       "title": "StatusResponse",
       "type": "object",
       "required": [
-        "reserve_available",
-        "reserve_deployed",
         "total_base",
         "total_quote"
       ],
       "properties": {
-        "reserve_available": {
-          "description": "The amount of reserve currently available for new Unstakes",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Uint128"
-            }
-          ]
-        },
-        "reserve_deployed": {
-          "description": "The amount of reserve currently deployed in in-flight Unstakes",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Uint128"
-            }
-          ]
-        },
         "total_base": {
           "description": "The total amount of base asset that has been requested for unbonding",
           "allOf": [

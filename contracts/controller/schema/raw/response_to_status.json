@@ -3,28 +3,10 @@
   "title": "StatusResponse",
   "type": "object",
   "required": [
-    "reserve_available",
-    "reserve_deployed",
     "total_base",
     "total_quote"
   ],
   "properties": {
-    "reserve_available": {
-      "description": "The amount of reserve currently available for new Unstakes",
-      "allOf": [
-        {
-          "$ref": "#/definitions/Uint128"
-        }
-      ]
-    },
-    "reserve_deployed": {
-      "description": "The amount of reserve currently deployed in in-flight Unstakes",
-      "allOf": [
-        {
-          "$ref": "#/definitions/Uint128"
-        }
-      ]
-    },
     "total_base": {
       "description": "The total amount of base asset that has been requested for unbonding",
       "allOf": [
