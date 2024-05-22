@@ -1043,6 +1043,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "unstake-dummy-provider"
+version = "0.3.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-storage-plus",
+ "cw-utils",
+ "kujira",
+ "kujira-rs-testing",
+ "schemars",
+ "serde",
+ "unstake",
+]
+
+[[package]]
 name = "unstake-reserve"
 version = "0.1.0"
 dependencies = [

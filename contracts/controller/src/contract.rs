@@ -38,7 +38,11 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response<KujiraMsg>, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    let config = Config::new(msg.clone());
+    let ghost_cfg: kujira_ghost::receipt_vault::ConfigResponse = deps.querier.query_wasm_smart(
+        &msg.vault_address,
+        &kujira_ghost::receipt_vault::QueryMsg::Config {},
+    )?;
+    let config = Config::new(msg.clone(), ghost_cfg);
     config.save(deps.storage)?;
     let broker = Broker::from(msg);
     broker.init(deps.storage)?;
@@ -299,6 +303,10 @@ pub fn migrate(
         pub const RESERVES: Item<(Uint128, Uint128)> = Item::new("reserves");
     }
     let mut msgs: Vec<CosmosMsg<_>> = vec![];
+    let ghost_cfg: kujira_ghost::receipt_vault::ConfigResponse = deps.querier.query_wasm_smart(
+        &env.contract.address,
+        &kujira_ghost::receipt_vault::QueryMsg::Config {},
+    )?;
     let old_cfg = v_0_3_0::CONFIG.load(deps.storage)?;
     let cfg = Config {
         owner: old_cfg.owner,
@@ -308,8 +316,8 @@ pub fn migrate(
         reserve_address: msg.reserve_address,
         vault_address: old_cfg.vault_address.clone(),
         offer_denom: Denom::new(old_cfg.offer_denom.to_string()),
-        debt_denom: Denom::new(format!("factory/{}/udebt", old_cfg.vault_address)),
-        ghost_denom: Denom::new(format!("factory/{}/urcpt", old_cfg.vault_address)),
+        debt_denom: Denom::new(ghost_cfg.debt_token_denom),
+        ghost_denom: Denom::new(ghost_cfg.receipt_denom),
         ask_denom: Denom::new(old_cfg.ask_denom.to_string()),
         adapter: old_cfg.adapter,
     };

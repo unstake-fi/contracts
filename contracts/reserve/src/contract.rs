@@ -297,6 +297,7 @@ pub fn execute(
             // and deployed amount is specified by the controller that we're migrating from.
             state.available += received;
             state.deployed += reserves_deployed;
+            state.save(deps.storage)?;
 
             // Snapshots the current rate of Legacy Reserve to Reserve, and saves it.
             let legacy_to_rsv = state.reserve_redemption_ratio.inv() * legacy_redemption_rate;

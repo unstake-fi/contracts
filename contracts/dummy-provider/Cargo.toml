@@ -1,7 +1,7 @@
 [package]
-name = "unstake-delegate"
+name = "unstake-dummy-provider"
 version = "0.3.0"
-authors = ["codehans <94654388+codehans@users.noreply.github.com>"]
+authors = ["Amit Prasad <amit@entropiclabs.io>", "Entropic Labs"]
 edition = "2021"
 
 exclude = ["contract.wasm", "hash.txt"]
@@ -29,4 +29,7 @@ kujira = { workspace = true }
 unstake = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
-thiserror = { workspace = true }
+
+[dev-dependencies]
+cw-multi-test = { workspace = true }
+kujira-rs-testing = { workspace = true }

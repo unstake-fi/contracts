@@ -1,6 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal, StdResult, Storage};
 use cw_storage_plus::Item;
+use kujira_ghost::receipt_vault::ConfigResponse as GhostConfig;
 use monetary::Denom;
 use unstake::{
     adapter::Adapter,
@@ -26,9 +27,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new(msg: InstantiateMsg) -> Self {
-        let ghost = Denom::new(format!("factory/{}/urcpt", msg.vault_address));
-        let debt = Denom::new(format!("factory/{}/udebt", msg.vault_address));
+    pub fn new(msg: InstantiateMsg, ghost_cfg: GhostConfig) -> Self {
         Self {
             owner: msg.owner,
             protocol_fee: msg.protocol_fee,
@@ -38,8 +37,8 @@ impl Config {
             vault_address: msg.vault_address,
             offer_denom: msg.offer_denom,
             ask_denom: msg.ask_denom,
-            debt_denom: debt,
-            ghost_denom: ghost,
+            debt_denom: Denom::new(ghost_cfg.debt_token_denom),
+            ghost_denom: Denom::new(ghost_cfg.receipt_denom),
             adapter: msg.adapter,
         }
     }
