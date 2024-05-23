@@ -169,7 +169,7 @@ pub fn execute(
 
             // Ensure we have enough liquidity to allocate the requested amount
             let ghost_rate = ghost_rate(&deps.querier, &config)?;
-            let required_liquidity = requested_amount.div_floor(&ghost_rate);
+            let required_liquidity = requested_amount.div_ceil(&ghost_rate);
             if required_liquidity.gt(&state.available) {
                 return Err(ContractError::InsufficentReserves {});
             }
