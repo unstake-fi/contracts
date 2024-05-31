@@ -283,8 +283,26 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(_deps: DepsMut<KujiraQuery>, _env: Env, _msg: ()) -> StdResult<Response<KujiraMsg>> {
-    Ok(Response::default())
+pub fn migrate(
+    _deps: DepsMut<KujiraQuery>,
+    env: Env,
+    msg: Vec<(Addr, Uint128)>,
+) -> StdResult<Response<KujiraMsg>> {
+    let create_msg: CosmosMsg<KujiraMsg> = DenomMsg::Create {
+        subdenom: "ursv".into(),
+    }
+    .into();
+    let send_msgs = msg
+        .into_iter()
+        .map(|(addr, amount)| DenomMsg::Mint {
+            denom: format!("factory/{}/ursv", env.contract.address).into(),
+            amount,
+            recipient: addr,
+        })
+        .collect::<Vec<_>>();
+    Ok(Response::default()
+        .add_message(create_msg)
+        .add_messages(send_msgs))
 }
 
 pub fn vault_borrow_msg<T>(
