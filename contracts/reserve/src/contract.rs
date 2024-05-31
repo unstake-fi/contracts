@@ -6,7 +6,8 @@ use crate::state::{State, LEGACY_DENOMS};
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     coins, ensure, ensure_eq, to_json_binary, wasm_execute, Addr, Binary, CosmosMsg, CustomQuery,
-    Decimal, Deps, DepsMut, Empty, Env, MessageInfo, Order, QuerierWrapper, Response, StdResult,
+    Decimal, Deps, DepsMut, Empty, Env, Event, MessageInfo, Order, QuerierWrapper, Response,
+    StdResult,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
@@ -100,10 +101,18 @@ pub fn execute(
                     .into(),
             };
 
+            let event = Event::new("unstake/reserve/fund").add_attributes(vec![
+                ("fund_amount", &base_amount.to_string()),
+                ("rsv_amount", &reserve_mint_amount.to_string()),
+                ("total_available", &state.available.to_string()),
+                ("sender", &info.sender.to_string()),
+            ]);
+
             Ok(Response::default()
                 .add_message(ghost_deposit_msg)
                 .add_message(reserve_mint_msg)
-                .add_message(return_msg))
+                .add_message(return_msg)
+                .add_event(event))
         }
         ExecuteMsg::Withdraw { callback } => {
             let reserve_amount = must_pay(&info, &config.rsv_denom)?;
@@ -145,10 +154,18 @@ pub fn execute(
                 None => config.base_denom.send(&info.sender, base_amount).into(),
             };
 
+            let event = Event::new("unstake/reserve/withdraw").add_attributes(vec![
+                ("rsv_amount", &reserve_amount.to_string()),
+                ("base_amount", &base_amount.to_string()),
+                ("total_available", &state.available.to_string()),
+                ("sender", &info.sender.to_string()),
+            ]);
+
             Ok(Response::default()
                 .add_message(burn_msg)
                 .add_message(ghost_withdraw_msg)
-                .add_message(return_msg))
+                .add_message(return_msg)
+                .add_event(event))
         }
         ExecuteMsg::RequestReserves {
             requested_amount,
@@ -198,9 +215,18 @@ pub fn execute(
                     .into(),
             };
 
+            let event = Event::new("unstake/reserve/request").add_attributes(vec![
+                ("requested_amount", &requested_amount.to_string()),
+                ("total_available", &state.available.to_string()),
+                ("total_deployed", &state.deployed.to_string()),
+                ("controller", &info.sender.to_string()),
+                ("controller_lent", &lent.to_string()),
+            ]);
+
             Ok(Response::default()
                 .add_message(ghost_withdraw_msg)
-                .add_message(return_msg))
+                .add_message(return_msg)
+                .add_event(event))
         }
         ExecuteMsg::ReturnReserves {
             original_amount,
@@ -246,21 +272,39 @@ pub fn execute(
                 None => vec![],
             };
 
+            let event = Event::new("unstake/reserve/return").add_attributes(vec![
+                ("original_amount", &original_amount.to_string()),
+                ("received_amount", &received.to_string()),
+                ("total_available", &state.available.to_string()),
+                ("total_deployed", &state.deployed.to_string()),
+                ("controller", &info.sender.to_string()),
+                ("controller_lent", &lent.to_string()),
+            ]);
+
             Ok(Response::default()
                 .add_message(ghost_deposit_msg)
-                .add_messages(return_msg))
+                .add_messages(return_msg)
+                .add_event(event))
         }
         ExecuteMsg::AddController { controller, limit } => {
             ensure_eq!(info.sender, config.owner, ContractError::Unauthorized {});
             WHITELISTED_CONTROLLERS.update(deps.storage, &controller, |c| {
                 StdResult::Ok(c.map_or((AmountU128::zero(), limit), |(lent, _)| (lent, limit)))
             })?;
-            Ok(Response::default())
+
+            let event = Event::new("unstake/reserve/add_controller").add_attributes(vec![
+                ("controller", controller.to_string()),
+                ("limit", limit.map_or("".to_string(), |l| l.to_string())),
+            ]);
+            Ok(Response::default().add_event(event))
         }
         ExecuteMsg::RemoveController { controller } => {
             ensure_eq!(info.sender, config.owner, ContractError::Unauthorized {});
             WHITELISTED_CONTROLLERS.remove(deps.storage, &controller);
-            Ok(Response::default())
+
+            let event = Event::new("unstake/reserve/remove_controller")
+                .add_attributes(vec![("controller", controller.to_string())]);
+            Ok(Response::default().add_event(event))
         }
         ExecuteMsg::UpdateConfig { owner } => {
             ensure_eq!(info.sender, config.owner, ContractError::Unauthorized {});
@@ -303,7 +347,22 @@ pub fn execute(
             let legacy_to_rsv = state.reserve_redemption_ratio.inv() * legacy_redemption_rate;
             LEGACY_DENOMS.save(deps.storage, legacy_denom.to_string(), &legacy_to_rsv)?;
 
-            Ok(Response::default().add_message(ghost_msg))
+            let event = Event::new("unstake/reserve/migrate").add_attributes(vec![
+                ("base_amount", &base_amount.to_string()),
+                ("received_amount", &received.to_string()),
+                ("reserves_deployed", &reserves_deployed.to_string()),
+                ("legacy_denom", &legacy_denom.to_string()),
+                (
+                    "legacy_redemption_rate",
+                    &legacy_redemption_rate.to_string(),
+                ),
+                ("total_available", &state.available.to_string()),
+                ("total_deployed", &state.deployed.to_string()),
+                ("controller", &info.sender.to_string()),
+                ("controller_lent", &lent.to_string()),
+            ]);
+
+            Ok(Response::default().add_message(ghost_msg).add_event(event))
         }
         ExecuteMsg::ExchangeLegacyReserve {} => {
             let received = one_coin(&info)?;
@@ -321,13 +380,21 @@ pub fn execute(
             };
 
             let burn_msg = DenomMsg::Burn {
-                denom: received.denom.into(),
+                denom: received.denom.clone().into(),
                 amount: received.amount,
             };
 
+            let event = Event::new("unstake/reserve/exchange_legacy").add_attributes(vec![
+                ("legacy_denom", &received.denom),
+                ("legacy_amount", &received.amount.to_string()),
+                ("rsv_amount", &return_amount.to_string()),
+                ("sender", &info.sender.to_string()),
+            ]);
+
             Ok(Response::default()
                 .add_message(mint_msg)
-                .add_message(burn_msg))
+                .add_message(burn_msg)
+                .add_event(event))
         }
     }
 }

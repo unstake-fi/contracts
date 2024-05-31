@@ -129,14 +129,14 @@ impl Broker {
     }
 
     /// Tallies an accepted offer and updates the running totals.
-    pub fn accept_offer<T: CustomQuery>(
+    pub fn accept_offer(
         &self,
-        deps: DepsMut<T>,
+        store: &mut dyn Storage,
         offer: &Offer,
     ) -> Result<(), ContractError> {
-        let (mut total_base, total_quote) = TOTALS.may_load(deps.storage)?.unwrap_or_default();
+        let (mut total_base, total_quote) = TOTALS.may_load(store)?.unwrap_or_default();
         total_base += offer.unbond_amount;
-        TOTALS.save(deps.storage, &(total_base, total_quote))?;
+        TOTALS.save(store, &(total_base, total_quote))?;
 
         Ok(())
     }

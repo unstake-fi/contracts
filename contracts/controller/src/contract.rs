@@ -72,7 +72,7 @@ pub fn execute(
             if offer.fee.gt(&max_fee) {
                 return Err(ContractError::MaxFeeExceeded {});
             };
-            broker.accept_offer(deps, &offer)?;
+            broker.accept_offer(deps.storage, &offer)?;
 
             let borrow_amount = offer.offer_amount - offer.reserve_allocation;
 
@@ -104,11 +104,17 @@ pub fn execute(
                     ),
             );
 
+            // Calculate delegate address in advance
+            let label = delegate_label(&env);
+            let (address, _) =
+                predict_address(config.delegate_code_id, &label, &deps.as_ref(), &env)?;
+
             let event = Event::new("unstake/controller/unstake")
                 .add_attribute("amount", amount)
                 .add_attribute("rates", rates)
                 .add_attribute("offer", offer)
-                .add_attribute("sender", info.sender);
+                .add_attribute("sender", info.sender)
+                .add_attribute("delegate", address);
 
             Ok(Response::default().add_event(event).add_messages(msgs))
         }
