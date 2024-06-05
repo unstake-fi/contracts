@@ -1,6 +1,6 @@
 [package]
 name = "unstake-dummy-provider"
-version = "0.3.0"
+version = "1.0.0"
 authors = ["Amit Prasad <amit@entropiclabs.io>", "Entropic Labs"]
 edition = "2021"
 

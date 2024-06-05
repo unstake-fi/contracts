@@ -1,6 +1,6 @@
 [package]
 name = "unstake-controller"
-version = "0.3.0"
+version = "1.0.0"
 authors = [
   "Amit Prasad <amit@entropiclabs.io>",
   "codehans <94654388+codehans@users.noreply.github.com>",
