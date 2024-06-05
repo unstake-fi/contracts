@@ -1,24 +1,20 @@
 [package]
 name = "unstake-controller"
-version = "0.3.1"
-authors = ["codehans <94654388+codehans@users.noreply.github.com>"]
+version = "1.0.0"
+authors = [
+  "Amit Prasad <amit@entropiclabs.io>",
+  "codehans <94654388+codehans@users.noreply.github.com>",
+  "Entropic Labs",
+]
 edition = "2021"
 
-exclude = [
-  # Those files are rust-optimizer artifacts. You might want to commit them for convenience but they should not be part of the source code publication.
-  "contract.wasm",
-  "hash.txt",
-]
+exclude = ["contract.wasm", "hash.txt"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-# for more explicit tests, cargo test --features=backtraces
-backtraces = ["cosmwasm-std/backtraces"]
-# use library feature to disable all instantiate/execute/query exports
 library = []
 
 [package.metadata.scripts]
@@ -40,9 +36,10 @@ unstake = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+monetary = { workspace = true }
 
 [dev-dependencies]
 cw-multi-test = { workspace = true }
 unstake-delegate = { path = "../delegate" }
 kujira-rs-testing = { workspace = true }
-cw1-whitelist = "1.1.2"
+unstake-reserve = { path = "../reserve" }

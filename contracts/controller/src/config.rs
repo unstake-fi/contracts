@@ -1,10 +1,12 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal, StdResult, Storage};
 use cw_storage_plus::Item;
-use kujira::Denom;
+use kujira_ghost::receipt_vault::ConfigResponse as GhostConfig;
+use monetary::Denom;
 use unstake::{
     adapter::Adapter,
     controller::{ConfigResponse, InstantiateMsg},
+    denoms::{Ask, Base, Debt, Rcpt},
 };
 
 static CONFIG: Item<Config> = Item::new("config");
@@ -15,13 +17,31 @@ pub struct Config {
     pub protocol_fee: Decimal,
     pub protocol_fee_address: Addr,
     pub delegate_code_id: u64,
+    pub reserve_address: Addr,
     pub vault_address: Addr,
-    pub offer_denom: Denom,
-    pub ask_denom: Denom,
+    pub offer_denom: Denom<Base>,
+    pub ask_denom: Denom<Ask>,
+    pub debt_denom: Denom<Debt>,
+    pub ghost_denom: Denom<Rcpt>,
     pub adapter: Adapter,
 }
 
 impl Config {
+    pub fn new(msg: InstantiateMsg, ghost_cfg: GhostConfig) -> Self {
+        Self {
+            owner: msg.owner,
+            protocol_fee: msg.protocol_fee,
+            protocol_fee_address: msg.protocol_fee_address,
+            delegate_code_id: msg.delegate_code_id,
+            reserve_address: msg.reserve_address,
+            vault_address: msg.vault_address,
+            offer_denom: msg.offer_denom,
+            ask_denom: msg.ask_denom,
+            debt_denom: Denom::new(ghost_cfg.debt_token_denom),
+            ghost_denom: Denom::new(ghost_cfg.receipt_denom),
+            adapter: msg.adapter,
+        }
+    }
     pub fn load(storage: &dyn Storage) -> StdResult<Self> {
         CONFIG.load(storage)
     }
@@ -52,25 +72,6 @@ impl Config {
             self.delegate_code_id = delegate_code_id
         }
     }
-
-    pub fn debt_denom(&self) -> Denom {
-        Denom::from(format!("factory/{}/udebt", self.vault_address))
-    }
-}
-
-impl From<InstantiateMsg> for Config {
-    fn from(value: InstantiateMsg) -> Self {
-        Self {
-            owner: value.owner,
-            protocol_fee: value.protocol_fee,
-            protocol_fee_address: value.protocol_fee_address,
-            delegate_code_id: value.delegate_code_id,
-            vault_address: value.vault_address,
-            offer_denom: value.offer_denom,
-            ask_denom: value.ask_denom,
-            adapter: value.adapter,
-        }
-    }
 }
 
 impl From<Config> for ConfigResponse {
@@ -80,9 +81,12 @@ impl From<Config> for ConfigResponse {
             protocol_fee: value.protocol_fee,
             protocol_fee_address: value.protocol_fee_address,
             delegate_code_id: value.delegate_code_id,
+            reserve_address: value.reserve_address,
             vault_address: value.vault_address,
             offer_denom: value.offer_denom,
             ask_denom: value.ask_denom,
+            debt_denom: value.debt_denom,
+            ghost_denom: value.ghost_denom,
             adapter: value.adapter,
         }
     }

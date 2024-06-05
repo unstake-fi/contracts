@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Coin, CosmosMsg, CustomQuery, Decimal, QuerierWrapper, StdResult};
 
-use super::{eris::Eris, gravedigger::Gravedigger,quark::Quark};
+use super::{eris::Eris, gravedigger::Gravedigger, quark::Quark};
 
 pub trait Unstake {
     fn redemption_rate<T: CustomQuery>(&self, querier: QuerierWrapper<T>) -> StdResult<Decimal>;

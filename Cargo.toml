@@ -1,5 +1,6 @@
 [workspace]
 members = ["contracts/*", "packages/*"]
+resolver = "2"
 
 [profile.release]
 opt-level = 3
@@ -13,20 +14,25 @@ incremental = false
 overflow-checks = true
 
 [workspace.dependencies]
-cosmwasm-schema = "1.5.0"
-cosmwasm-std = { version = "1.5.0", features = [
+cosmwasm-schema = "2.0.3"
+cosmwasm-std = { version = "2.0.3", features = [
   "cosmwasm_1_2",
   # Enable this if you only deploy to chains that have CosmWasm 1.4 or higher
   # "cosmwasm_1_4",
 ] }
-cw-storage-plus = "1.1.0"
-cw-utils = "1.0.2"
-cw2 = "1.1.1"
-kujira = "0.8.3"
-kujira-rs-testing = "1.4.0"
-kujira-ghost = "0.8.0"
-schemars = "0.8.15"
-serde = { version = "1.0.189", default-features = false, features = ["derive"] }
-thiserror = { version = "1.0.49" }
-cw-multi-test = "0.18"
+cw-storage-plus = "2.0.0"
+cw-utils = "2.0.0"
+cw2 = "2.0.0"
+kujira = "1.1.0"
+kujira-rs-testing = { version = "1.7.0", git = "https://github.com/Team-Kujira/kujira-rs.git", branch = "master" }
+kujira-ghost = "1.1.0"
+schemars = "0.8.19"
+serde = { version = "1.0.202", default-features = false, features = ["derive"] }
+thiserror = { version = "1.0.61" }
+cw-multi-test = "2.0.1"
 unstake = { path = "./packages/unstake" }
+monetary = { version = "0.0.3" }
+
+[patch."https://github.com/Team-Kujira/kujira-rs.git"]
+# Use canonical kujira crate
+kujira = { version = "1.1.0" }

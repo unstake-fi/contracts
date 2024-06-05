@@ -1,0 +1,35 @@
+[package]
+name = "unstake-dummy-provider"
+version = "1.0.0"
+authors = ["Amit Prasad <amit@entropiclabs.io>", "Entropic Labs"]
+edition = "2021"
+
+exclude = ["contract.wasm", "hash.txt"]
+
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+library = []
+
+[package.metadata.scripts]
+optimize = """docker run --rm -v "$(pwd)":/code \
+  --mount type=volume,source="$(basename "$(pwd)")_cache",target=/target \
+  --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
+  cosmwasm/rust-optimizer:0.14.0
+"""
+
+[dependencies]
+cosmwasm-schema = { workspace = true }
+cosmwasm-std = { workspace = true }
+cw-storage-plus = { workspace = true }
+cw-utils = { workspace = true }
+kujira = { workspace = true }
+unstake = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+cw-multi-test = { workspace = true }
+kujira-rs-testing = { workspace = true }

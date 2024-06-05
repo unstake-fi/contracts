@@ -69,34 +69,6 @@
       "additionalProperties": false
     },
     {
-      "description": "Adds funds to the reserve",
-      "type": "object",
-      "required": [
-        "fund"
-      ],
-      "properties": {
-        "fund": {
-          "type": "object",
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Withdraw deposited reserve funds",
-      "type": "object",
-      "required": [
-        "withdraw"
-      ],
-      "properties": {
-        "withdraw": {
-          "type": "object",
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    {
       "description": "Update the Controller config",
       "type": "object",
       "required": [

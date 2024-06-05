@@ -1,11 +1,13 @@
 use crate::{
     adapter::Adapter,
     broker::{Offer, Status},
+    denoms::{Ask, Base, Debt, Rcpt},
     rates::Rates,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Coin, Decimal, Timestamp, Uint128};
-use kujira::{CallbackData, CallbackMsg, Denom};
+use cosmwasm_std::{Addr, Binary, Decimal, Timestamp};
+use kujira::{CallbackData, CallbackMsg};
+use monetary::{AmountU128, Denom, Rate};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -13,13 +15,14 @@ pub struct InstantiateMsg {
     pub protocol_fee: Decimal,
     pub protocol_fee_address: Addr,
     pub delegate_code_id: u64,
+    pub reserve_address: Addr,
     pub vault_address: Addr,
 
     /// The ask denom of the Broker - ie the LST/receipt token
-    pub ask_denom: Denom,
+    pub ask_denom: Denom<Ask>,
 
     /// The offer denom of the Broker - ie the underlying bonded token
-    pub offer_denom: Denom,
+    pub offer_denom: Denom<Base>,
 
     /// The amount of time in seconds that an unbonding takes
     pub unbonding_duration: u64,
@@ -34,7 +37,7 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     Unstake {
-        max_fee: Uint128,
+        max_fee: AmountU128<Base>,
         callback: Option<CallbackData>,
     },
 
@@ -46,12 +49,6 @@ pub enum ExecuteMsg {
     /// Called by a delegate contract when the unbonding process is complete.
     /// Returns the unbonded tokens, the debt tokens for ghost, and the corresponding offer
     Complete { offer: Offer },
-
-    /// Adds funds to the reserve
-    Fund {},
-
-    /// Withdraw deposited reserve funds
-    Withdraw {},
 
     /// Update the Controller config
     UpdateConfig {
@@ -70,14 +67,14 @@ pub enum ExecuteMsg {
 
 #[cw_serde]
 pub enum CallbackType {
-    Unstake { offer: Offer, unbond_amount: Coin },
+    GhostBorrow { offer: Offer },
 }
 
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(OfferResponse)]
-    Offer { amount: Uint128 },
+    Offer { amount: AmountU128<Ask> },
 
     #[returns(DelegatesResponse)]
     Delegates {},
@@ -94,28 +91,24 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct OfferResponse {
-    pub amount: Uint128,
-    pub fee: Uint128,
+    pub amount: AmountU128<Base>,
+    pub fee: AmountU128<Base>,
 }
 
 #[cw_serde]
 pub struct RatesResponse {
-    pub vault_debt: Decimal,
+    pub vault_debt: Rate<Base, Debt>,
     pub vault_interest: Decimal,
     pub vault_max_interest: Decimal,
-    pub provider_redemption: Decimal,
+    pub provider_redemption: Rate<Base, Ask>,
 }
 
 #[cw_serde]
 pub struct StatusResponse {
     /// The total amount of base asset that has been requested for unbonding
-    pub total_base: Uint128,
+    pub total_base: AmountU128<Ask>,
     /// The total amount of quote asset that has been returned from unbonding
-    pub total_quote: Uint128,
-    /// The amount of reserve currently available for new Unstakes
-    pub reserve_available: Uint128,
-    /// The amount of reserve currently deployed in in-flight Unstakes
-    pub reserve_deployed: Uint128,
+    pub total_quote: AmountU128<Base>,
 }
 
 #[cw_serde]
@@ -124,9 +117,12 @@ pub struct ConfigResponse {
     pub protocol_fee: Decimal,
     pub protocol_fee_address: Addr,
     pub delegate_code_id: u64,
+    pub reserve_address: Addr,
     pub vault_address: Addr,
-    pub offer_denom: Denom,
-    pub ask_denom: Denom,
+    pub offer_denom: Denom<Base>,
+    pub ask_denom: Denom<Ask>,
+    pub debt_denom: Denom<Debt>,
+    pub ghost_denom: Denom<Rcpt>,
     pub adapter: Adapter,
 }
 
@@ -167,8 +163,6 @@ impl From<Status> for StatusResponse {
         Self {
             total_base: value.total_base,
             total_quote: value.total_quote,
-            reserve_available: value.reserve_available,
-            reserve_deployed: value.reserve_deployed,
         }
     }
 }

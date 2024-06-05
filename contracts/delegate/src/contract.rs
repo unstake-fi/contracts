@@ -25,7 +25,7 @@ pub fn instantiate(
     CONTROLLER.save(deps.storage, &msg.controller)?;
     OFFER.save(deps.storage, &msg.offer)?;
     ADAPTER.save(deps.storage, &msg.adapter)?;
-    let unbond_msg = msg.adapter.unbond_start(msg.unbond_amount);
+    let unbond_msg = msg.adapter.unbond_start(msg.unbond_amount.into());
     Ok(Response::default().add_message(unbond_msg))
 }
 

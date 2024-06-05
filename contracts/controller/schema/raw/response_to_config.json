@@ -5,11 +5,14 @@
   "required": [
     "adapter",
     "ask_denom",
+    "debt_denom",
     "delegate_code_id",
+    "ghost_denom",
     "offer_denom",
     "owner",
     "protocol_fee",
     "protocol_fee_address",
+    "reserve_address",
     "vault_address"
   ],
   "properties": {
@@ -17,15 +20,21 @@
       "$ref": "#/definitions/Adapter"
     },
     "ask_denom": {
-      "$ref": "#/definitions/Denom"
+      "type": "string"
+    },
+    "debt_denom": {
+      "type": "string"
     },
     "delegate_code_id": {
       "type": "integer",
       "format": "uint64",
       "minimum": 0.0
     },
+    "ghost_denom": {
+      "type": "string"
+    },
     "offer_denom": {
-      "$ref": "#/definitions/Denom"
+      "type": "string"
     },
     "owner": {
       "$ref": "#/definitions/Addr"
@@ -34,6 +43,9 @@
       "$ref": "#/definitions/Decimal"
     },
     "protocol_fee_address": {
+      "$ref": "#/definitions/Addr"
+    },
+    "reserve_address": {
       "$ref": "#/definitions/Addr"
     },
     "vault_address": {
@@ -52,6 +64,18 @@
           "properties": {
             "eris": {
               "$ref": "#/definitions/Eris"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "gravedigger"
+          ],
+          "properties": {
+            "gravedigger": {
+              "$ref": "#/definitions/Gravedigger"
             }
           },
           "additionalProperties": false
@@ -78,14 +102,27 @@
       "description": "A fixed-point decimal value with 18 fractional digits, i.e. Decimal(1_000_000_000_000_000_000) == 1.0\n\nThe greatest possible value that can be represented is 340282366920938463463.374607431768211455 (which is (2^128 - 1) / 10^18)",
       "type": "string"
     },
-    "Denom": {
-      "type": "string"
-    },
     "Eris": {
       "$ref": "#/definitions/Addr"
     },
+    "Gravedigger": {
+      "$ref": "#/definitions/Addr"
+    },
     "Quark": {
-      "$ref": "#/definitions/Eris"
+      "type": "object",
+      "required": [
+        "hub",
+        "liq"
+      ],
+      "properties": {
+        "hub": {
+          "$ref": "#/definitions/Addr"
+        },
+        "liq": {
+          "$ref": "#/definitions/Addr"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

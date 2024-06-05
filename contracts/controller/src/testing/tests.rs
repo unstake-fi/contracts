@@ -8,21 +8,34 @@ use kujira_rs_testing::{
     api::MockApiBech32,
     mock::{mock_app, CustomApp},
 };
-use unstake::controller::{DelegatesResponse, ExecuteMsg, OfferResponse, QueryMsg, StatusResponse};
+use monetary::AmountU128;
+use unstake::{
+    controller::{DelegatesResponse, ExecuteMsg, OfferResponse, QueryMsg, StatusResponse},
+    denoms::Base,
+};
 
 struct Contracts {
     pub ghost: Addr,
     pub provider: Addr,
     pub controller: Addr,
+    pub reserve: Addr,
 }
 
-fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
+fn setup(
+    balances: Vec<(Addr, Vec<Coin>)>,
+    controller_limit: Option<AmountU128<Base>>,
+) -> (CustomApp, Contracts) {
     let mut app = mock_app(balances);
 
     let delegate_code = ContractWrapper::new(
         unstake_delegate::contract::execute,
         unstake_delegate::contract::instantiate,
         unstake_delegate::contract::query,
+    );
+    let reserve_code = ContractWrapper::new(
+        unstake_reserve::contract::execute,
+        unstake_reserve::contract::instantiate,
+        unstake_reserve::contract::query,
     );
     let controller_code = ContractWrapper::new(
         crate::contract::execute,
@@ -42,6 +55,7 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
     );
 
     let delegate_code_id = app.store_code(Box::new(delegate_code));
+    let reserve_code_id = app.store_code(Box::new(reserve_code));
     let controller_code_id = app.store_code(Box::new(controller_code));
     let ghost_code_id = app.store_code(Box::new(ghost_code));
     let provider_code_id = app.store_code(Box::new(provider_code));
@@ -58,7 +72,7 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
                 denom_creation_fee: Uint128::zero(),
                 utilization_to_curve: vec![],
             },
-            &vec![],
+            &[],
             "ghost",
             None,
         )
@@ -69,8 +83,23 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
             provider_code_id,
             app.api().addr_make("provider"),
             &(),
-            &vec![],
+            &[],
             "provider",
+            None,
+        )
+        .unwrap();
+
+    let reserve_address = app
+        .instantiate_contract(
+            reserve_code_id,
+            app.api().addr_make("reserve"),
+            &unstake::reserve::InstantiateMsg {
+                owner: app.api().addr_make("owner"),
+                ghost_vault_addr: vault_address.clone(),
+                base_denom: monetary::Denom::new("quote"),
+            },
+            &[],
+            "reserve",
             None,
         )
         .unwrap();
@@ -85,19 +114,32 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
                 protocol_fee_address: fee_address(),
                 delegate_code_id,
                 vault_address: vault_address.clone(),
-                ask_denom: Denom::from("base"),
-                offer_denom: Denom::from("quote"),
+                reserve_address: reserve_address.clone(),
+                ask_denom: monetary::Denom::new("base"),
+                offer_denom: monetary::Denom::new("quote"),
                 adapter: unstake::adapter::Adapter::Eris(provider_address.clone().into()),
                 // 2 weeks
                 unbonding_duration: 2 * 7 * 24 * 60 * 60,
                 // 3%
                 min_rate: Decimal::from_str("0.03").unwrap(),
             },
-            &vec![],
+            &[],
             "controller",
             None,
         )
         .unwrap();
+
+    // Add controller to reserve
+    app.execute_contract(
+        app.api().addr_make("owner"),
+        reserve_address.clone(),
+        &unstake::reserve::ExecuteMsg::AddController {
+            controller: controller_address.clone(),
+            limit: controller_limit,
+        },
+        &[],
+    )
+    .unwrap();
 
     (
         app,
@@ -105,40 +147,48 @@ fn setup(balances: Vec<(Addr, Vec<Coin>)>) -> (CustomApp, Contracts) {
             ghost: vault_address,
             provider: provider_address,
             controller: controller_address,
+            reserve: reserve_address,
         },
     )
+}
+
+fn fund_reserve(app: &mut CustomApp, funder: Addr, reserve: Addr, amount: Uint128, denom: &str) {
+    app.execute_contract(
+        funder,
+        reserve,
+        &unstake::reserve::ExecuteMsg::Fund { callback: None },
+        &coins(amount.u128(), denom),
+    )
+    .unwrap();
 }
 
 fn query_balances(app: &CustomApp, address: Addr) -> Vec<Coin> {
     app.wrap().query_all_balances(address).unwrap()
 }
-
 #[test]
 fn instantiate() {
-    setup(vec![]);
+    setup(vec![], None);
 }
 
 #[test]
 fn quote_initial() {
     // Check that when the contract is new, and there is no reserve fund, the quoted rate uses the max rate from the vault
-    let (app, contracts) = setup(vec![]);
+    let (app, contracts) = setup(vec![], None);
 
     let status: StatusResponse = app
         .wrap()
         .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
         .unwrap();
 
-    assert_eq!(status.reserve_available, Uint128::zero());
-    assert_eq!(status.reserve_deployed, Uint128::zero());
-    assert_eq!(status.total_base, Uint128::zero());
-    assert_eq!(status.total_quote, Uint128::zero());
+    assert_eq!(status.total_base, AmountU128::zero());
+    assert_eq!(status.total_quote, AmountU128::zero());
 
     let quote: OfferResponse = app
         .wrap()
         .query_wasm_smart(
             contracts.controller,
             &QueryMsg::Offer {
-                amount: Uint128::from(10000u128),
+                amount: AmountU128::new(Uint128::from(10000u128)),
             },
         )
         .unwrap();
@@ -154,8 +204,8 @@ fn quote_initial() {
     // List price 10737
     // Interest amount 1234
     // Offer amount 10737 - 1234 = 9,503
-    assert_eq!(quote.amount, Uint128::from(9501u128));
-    assert_eq!(quote.fee, Uint128::from(1236u128));
+    assert_eq!(quote.amount, AmountU128::new(Uint128::from(9501u128)));
+    assert_eq!(quote.fee, AmountU128::new(Uint128::from(1236u128)));
 }
 
 #[test]
@@ -164,31 +214,21 @@ fn quote_reserve_clamped() {
 
     // Same as above, but with a small amount of reserve allocated that will be entirely consumed
     let balances = vec![(api.addr_make("funder"), coins(100000000u128, "quote"))];
-    let (mut app, contracts) = setup(balances);
-    app.execute_contract(
-        app.api().addr_make("funder"),
-        contracts.controller.clone(),
-        &ExecuteMsg::Fund {},
-        &coins(200u128, "quote"),
-    )
-    .unwrap();
-
-    let status: StatusResponse = app
-        .wrap()
-        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
-        .unwrap();
-
-    assert_eq!(status.reserve_available, Uint128::from(200u128));
-    assert_eq!(status.reserve_deployed, Uint128::zero());
-    assert_eq!(status.total_base, Uint128::zero());
-    assert_eq!(status.total_quote, Uint128::zero());
+    let (mut app, contracts) = setup(balances, None);
+    fund_reserve(
+        &mut app,
+        api.addr_make("funder"),
+        contracts.reserve.clone(),
+        200u128.into(),
+        "quote",
+    );
 
     let quote: OfferResponse = app
         .wrap()
         .query_wasm_smart(
             contracts.controller,
             &QueryMsg::Offer {
-                amount: Uint128::from(10000u128),
+                amount: AmountU128::new(Uint128::from(10000u128)),
             },
         )
         .unwrap();
@@ -206,8 +246,8 @@ fn quote_reserve_clamped() {
     // Interest amount 1234
     // Available reserve = 200
     // Offer amount 10737 - 1034 = 9,703
-    assert_eq!(quote.amount, Uint128::from(9701u128));
-    assert_eq!(quote.fee, Uint128::from(1036u128));
+    assert_eq!(quote.amount, AmountU128::new(Uint128::from(9701u128)));
+    assert_eq!(quote.fee, AmountU128::new(Uint128::from(1036u128)));
 }
 
 #[test]
@@ -216,31 +256,21 @@ fn quote_unclamped() {
     let api = MockApiBech32::new("kujira");
 
     let balances = vec![(api.addr_make("funder"), coins(100000000u128, "quote"))];
-    let (mut app, contracts) = setup(balances);
-    app.execute_contract(
-        app.api().addr_make("funder"),
-        contracts.controller.clone(),
-        &ExecuteMsg::Fund {},
-        &coins(20000u128, "quote"),
-    )
-    .unwrap();
-
-    let status: StatusResponse = app
-        .wrap()
-        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
-        .unwrap();
-
-    assert_eq!(status.reserve_available, Uint128::from(20000u128));
-    assert_eq!(status.reserve_deployed, Uint128::zero());
-    assert_eq!(status.total_base, Uint128::zero());
-    assert_eq!(status.total_quote, Uint128::zero());
+    let (mut app, contracts) = setup(balances, None);
+    fund_reserve(
+        &mut app,
+        api.addr_make("funder"),
+        contracts.reserve.clone(),
+        20000u128.into(),
+        "quote",
+    );
 
     let quote: OfferResponse = app
         .wrap()
         .query_wasm_smart(
             contracts.controller,
             &QueryMsg::Offer {
-                amount: Uint128::from(10000u128),
+                amount: AmountU128::new(Uint128::from(10000u128)),
             },
         )
         .unwrap();
@@ -256,8 +286,8 @@ fn quote_unclamped() {
     // 0.03835616438 interest
     // List price 10737, interest 411
     // Offer amount 10737 - 411 = 9,703
-    assert_eq!(quote.amount, Uint128::from(10325u128));
-    assert_eq!(quote.fee, Uint128::from(412u128));
+    assert_eq!(quote.amount, AmountU128::new(Uint128::from(10325u128)));
+    assert_eq!(quote.fee, AmountU128::new(Uint128::from(412u128)));
 }
 
 #[test]
@@ -266,14 +296,14 @@ fn quote_min_rate_clamped() {
     let api = MockApiBech32::new("kujira");
 
     let balances = vec![(api.addr_make("funder"), coins(100000000u128, "quote"))];
-    let (mut app, contracts) = setup(balances);
-    app.execute_contract(
-        app.api().addr_make("funder"),
-        contracts.controller.clone(),
-        &ExecuteMsg::Fund {},
-        &coins(20000u128, "quote"),
-    )
-    .unwrap();
+    let (mut app, contracts) = setup(balances, None);
+    fund_reserve(
+        &mut app,
+        api.addr_make("funder"),
+        contracts.reserve.clone(),
+        20000u128.into(),
+        "quote",
+    );
 
     app.execute_contract(
         app.api().addr_make("owner"),
@@ -282,7 +312,7 @@ fn quote_min_rate_clamped() {
             min_rate: Some(Decimal::from_str("1.1").unwrap()),
             duration: None,
         },
-        &vec![],
+        &[],
     )
     .unwrap();
 
@@ -291,7 +321,7 @@ fn quote_min_rate_clamped() {
         .query_wasm_smart(
             contracts.controller,
             &QueryMsg::Offer {
-                amount: Uint128::from(10000u128),
+                amount: AmountU128::new(Uint128::from(10000u128)),
             },
         )
         .unwrap();
@@ -308,8 +338,8 @@ fn quote_min_rate_clamped() {
     // 0.04219178082 interest
     // List price 10737, interest 452
     // Offer amount 10737 - 452 = 10,285
-    assert_eq!(quote.amount, Uint128::from(10283u128));
-    assert_eq!(quote.fee, Uint128::from(454u128));
+    assert_eq!(quote.amount, AmountU128::new(Uint128::from(10283u128)));
+    assert_eq!(quote.fee, AmountU128::new(Uint128::from(454u128)));
 }
 
 #[test]
@@ -321,15 +351,14 @@ fn execute_offer() {
         (api.addr_make("unstaker"), coins(10000u128, "base")),
         (api.addr_make("lender"), coins(100000000u128, "quote")),
     ];
-    let (mut app, contracts) = setup(balances);
-
-    app.execute_contract(
+    let (mut app, contracts) = setup(balances, None);
+    fund_reserve(
+        &mut app,
         api.addr_make("funder"),
-        contracts.controller.clone(),
-        &ExecuteMsg::Fund {},
-        &coins(20000u128, "quote"),
-    )
-    .unwrap();
+        contracts.reserve.clone(),
+        20000u128.into(),
+        "quote",
+    );
 
     app.execute_contract(
         api.addr_make("lender"),
@@ -341,24 +370,24 @@ fn execute_offer() {
     )
     .unwrap();
 
-    let amount = Uint128::from(10000u128);
-
-    let status: StatusResponse = app
-        .wrap()
-        .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
-        .unwrap();
-
-    assert_eq!(status.reserve_available, Uint128::from(20000u128));
-    assert_eq!(status.reserve_deployed, Uint128::zero());
-    assert_eq!(status.total_base, Uint128::zero());
-    assert_eq!(status.total_quote, Uint128::zero());
+    // Executing with max_fee = 400 < 411 should fail
+    app.execute_contract(
+        api.addr_make("unstaker"),
+        contracts.controller.clone(),
+        &ExecuteMsg::Unstake {
+            callback: None,
+            max_fee: AmountU128::new(Uint128::from(400u128)),
+        },
+        &coins(10000u128, "base"),
+    )
+    .unwrap_err();
 
     app.execute_contract(
         api.addr_make("unstaker"),
         contracts.controller.clone(),
         &ExecuteMsg::Unstake {
             callback: None,
-            max_fee: amount,
+            max_fee: AmountU128::new(Uint128::from(500u128)),
         },
         &coins(10000u128, "base"),
     )
@@ -372,46 +401,59 @@ fn execute_offer() {
     let (delegate, _) = delegates.delegates[0].clone();
 
     let unstaker_balances = query_balances(&app, api.addr_make("unstaker"));
-    let controller_balances = query_balances(&app, contracts.controller.clone());
+    let reserve_balances = query_balances(&app, contracts.reserve.clone());
     let delegate_balances = query_balances(&app, delegate);
     let provider_balances = query_balances(&app, contracts.provider);
     let ghost_balances = query_balances(&app, contracts.ghost.clone());
 
     // 10000 unstaked
-    // 10326 returned to user
+    // 10325 returned to user
     // 411 in fees
-    // reserve allocation (823) must be sent to delegate
+    // reserve allocation (823)
     // debt_rate 1.12
-    // debt_tokens 11566
-    // ghots depost 100000000 - 10326 = 99989674
+    // (10326 - 823) / 1.12 debt tokens -> 8484
+    // ghots depost 100000000 + 20000 (reserves) - (10325 - 823reserve allocation) = 99990498
 
     // unstaker gets their money, less the fees
     assert_eq!(unstaker_balances, coins(10325u128, "quote"));
-    // remainder of reserve left on controller
-    assert_eq!(controller_balances, coins(19176u128, "quote"));
+    // remainder of reserve left on reserve
+    assert_eq!(
+        reserve_balances,
+        coins(19176u128, format!("factory/{}/urcpt", contracts.ghost))
+    );
     // delegate has the debt tokens, and reserve allocation
     assert_eq!(
         delegate_balances,
-        vec![
-            coin(9219u128, format!("factory/{}/udebt", contracts.ghost)),
-            coin(824u128, "quote")
-        ]
+        vec![coin(8484u128, format!("factory/{}/udebt", contracts.ghost)),]
     );
     // Provider should have received the base for unbonding
     assert_eq!(provider_balances, coins(10000u128, "base"));
 
     // And ghost should have the borrowed amount deducted
-    assert_eq!(ghost_balances, coins(100000000u128 - 10325u128, "quote"));
+    let ghost_starting = 100000000u128 + 20000u128;
+    let borrow = 9501u128 + 823u128 + 1u128; // (borrow amount) + reserve withdrawn + 1 (rounding)
+    assert_eq!(ghost_balances, coins(ghost_starting - borrow, "quote"));
 
     let status: StatusResponse = app
         .wrap()
         .query_wasm_smart(contracts.controller, &QueryMsg::Status {})
         .unwrap();
 
-    assert_eq!(status.reserve_available, Uint128::from(20000u128 - 824));
-    assert_eq!(status.reserve_deployed, Uint128::from(824u128));
-    assert_eq!(status.total_base, Uint128::from(10000u128));
-    assert_eq!(status.total_quote, Uint128::zero());
+    let reserve_status: unstake::reserve::StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.reserve, &unstake::reserve::QueryMsg::Status {})
+        .unwrap();
+
+    assert_eq!(
+        reserve_status.available,
+        AmountU128::new(Uint128::from(20000u128 - 824))
+    );
+    assert_eq!(
+        reserve_status.deployed,
+        AmountU128::new(Uint128::from(824u128))
+    );
+    assert_eq!(status.total_base, AmountU128::new(Uint128::from(10000u128)));
+    assert_eq!(status.total_quote, AmountU128::zero());
 }
 
 #[test]
@@ -422,7 +464,7 @@ fn execute_unfunded_offer() {
         (api.addr_make("unstaker"), coins(10000u128, "base")),
         (api.addr_make("lender"), coins(100000000u128, "quote")),
     ];
-    let (mut app, contracts) = setup(balances);
+    let (mut app, contracts) = setup(balances, None);
 
     app.execute_contract(
         api.addr_make("lender"),
@@ -434,17 +476,15 @@ fn execute_unfunded_offer() {
     )
     .unwrap();
 
-    let amount = Uint128::from(10000u128);
+    let amount = AmountU128::new(Uint128::from(10000u128));
 
     let status: StatusResponse = app
         .wrap()
         .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
         .unwrap();
 
-    assert_eq!(status.reserve_available, Uint128::zero());
-    assert_eq!(status.reserve_deployed, Uint128::zero());
-    assert_eq!(status.total_base, Uint128::zero());
-    assert_eq!(status.total_quote, Uint128::zero());
+    assert_eq!(status.total_base, AmountU128::zero());
+    assert_eq!(status.total_quote, AmountU128::zero());
 
     app.execute_contract(
         api.addr_make("unstaker"),
@@ -465,7 +505,7 @@ fn execute_unfunded_offer() {
     let (delegate, _) = delegates.delegates[0].clone();
 
     let unstaker_balances = query_balances(&app, api.addr_make("unstaker"));
-    let controller_balances = query_balances(&app, contracts.controller.clone());
+    let reserve_balances = query_balances(&app, contracts.reserve.clone());
     let delegate_balances = query_balances(&app, delegate);
     let provider_balances = query_balances(&app, contracts.provider);
     let ghost_balances = query_balances(&app, contracts.ghost.clone());
@@ -473,7 +513,7 @@ fn execute_unfunded_offer() {
     // unstaker gets their money, less the fees
     assert_eq!(unstaker_balances, coins(9501u128, "quote"));
     // remainder of reserve left on controller
-    assert_eq!(controller_balances, vec![]);
+    assert_eq!(reserve_balances, vec![]);
     // delegate has the debt tokens, and no reserve allocation
     assert_eq!(
         delegate_balances,
@@ -490,10 +530,15 @@ fn execute_unfunded_offer() {
         .query_wasm_smart(contracts.controller, &QueryMsg::Status {})
         .unwrap();
 
-    assert_eq!(status.reserve_available, Uint128::zero());
-    assert_eq!(status.reserve_deployed, Uint128::zero());
-    assert_eq!(status.total_base, Uint128::from(10000u128));
-    assert_eq!(status.total_quote, Uint128::zero());
+    let reserve_status: unstake::reserve::StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.reserve, &unstake::reserve::QueryMsg::Status {})
+        .unwrap();
+
+    assert_eq!(reserve_status.available, AmountU128::zero());
+    assert_eq!(reserve_status.deployed, AmountU128::zero());
+    assert_eq!(status.total_base, AmountU128::new(Uint128::from(10000u128)));
+    assert_eq!(status.total_quote, AmountU128::zero());
 }
 
 #[test]
@@ -507,15 +552,14 @@ fn close_offer() {
         (api.addr_make("unstaker"), coins(10000u128, "base")),
         (api.addr_make("lender"), coins(100000000u128, "quote")),
     ];
-    let (mut app, contracts) = setup(balances);
-
-    app.execute_contract(
+    let (mut app, contracts) = setup(balances, None);
+    fund_reserve(
+        &mut app,
         api.addr_make("funder"),
-        contracts.controller.clone(),
-        &ExecuteMsg::Fund {},
-        &coins(20000u128, "quote"),
-    )
-    .unwrap();
+        contracts.reserve.clone(),
+        20000u128.into(),
+        "quote",
+    );
 
     // Make sure that the provider has enough tokens to return once unbonding is complete
     app.send_tokens(
@@ -535,7 +579,7 @@ fn close_offer() {
     )
     .unwrap();
 
-    let amount = Uint128::from(10000u128);
+    let amount = AmountU128::new(Uint128::from(10000u128));
 
     app.execute_contract(
         api.addr_make("unstaker"),
@@ -560,10 +604,24 @@ fn close_offer() {
         .query_wasm_smart(contracts.controller.clone(), &QueryMsg::Status {})
         .unwrap();
 
-    assert_eq!(status.reserve_available, Uint128::from(20000u128 - 824));
-    assert_eq!(status.reserve_deployed, Uint128::from(824u128));
-    assert_eq!(status.total_base, Uint128::from(10000u128));
-    assert_eq!(status.total_quote, Uint128::zero());
+    let reserve_status: unstake::reserve::StatusResponse = app
+        .wrap()
+        .query_wasm_smart(
+            contracts.reserve.clone(),
+            &unstake::reserve::QueryMsg::Status {},
+        )
+        .unwrap();
+
+    assert_eq!(
+        reserve_status.available,
+        AmountU128::new(Uint128::from(20000u128 - 824))
+    );
+    assert_eq!(
+        reserve_status.deployed,
+        AmountU128::new(Uint128::from(824u128))
+    );
+    assert_eq!(status.total_base, AmountU128::new(Uint128::from(10000u128)));
+    assert_eq!(status.total_quote, AmountU128::zero());
 
     // 2 weeks later, ghost debt rate should have increased
     app.update_block(|x| {
@@ -574,11 +632,11 @@ fn close_offer() {
         api.addr_make("random"),
         delegate.clone(),
         &unstake::delegate::ExecuteMsg::Complete {},
-        &vec![],
+        &[],
     )
     .unwrap();
 
-    let controller_balances = query_balances(&app, contracts.controller.clone());
+    let reserve_balances = query_balances(&app, contracts.reserve.clone());
     let delegate_balances = query_balances(&app, delegate);
     let provider_balances = query_balances(&app, contracts.provider);
     let ghost_balances = query_balances(&app, contracts.ghost.clone());
@@ -586,16 +644,20 @@ fn close_offer() {
     // despite the rate being as-predicted, this unstake will generate a profit.
     // this is because the unstake fee - in this case 100% APR over 2 weeks = 3.8356%
     // is charged on the amount of quote asset returned, but in order to honour this
-    // unbonding, we actually only need to borrow 100% - 3.8356% of the unbonded amout.
+    // unbonding, we actually only need to borrow 100% - 3.8356% of the unbonded amount.
+    // Then, we also subtract the reserve allocation from the amount borrowed.
 
     // We can calculate our way around this when quoting, but it's a nice extra bit of revenue
     // for the protocol
 
-    // So we'll pay 3.8356 on 10326 = 396,
+    // So we'll pay 3.8356 on 9503 = 365,
     // but have an allocated fee of 3.8356 on the total value = 10737 * 3.8356 = 411
-    // so we have an excess profit here of 411 - 396 = 15
-    // of that profit, 25% is protocol_fee, so 3
-    assert_eq!(controller_balances, coins(20012u128, "quote"));
+    // so we have an excess profit here of 411 - 365 = 46
+    // of that profit, 25% is protocol_fee, so 11.
+    assert_eq!(
+        reserve_balances,
+        coins(20035u128, format!("factory/{}/urcpt", contracts.ghost))
+    );
 
     // delegate should now be empty
     assert_eq!(delegate_balances, vec![]);
@@ -608,20 +670,31 @@ fn close_offer() {
     );
 
     // And ghost should have the borrowed amount returned with interest
-    // 10326 over 2 weeks at 100% = 1 / 26 = 397.
-    assert_eq!(ghost_balances, coins(100000397u128, "quote"));
+    // 9503 over 2 weeks at 100% = 1 / 26 = 365 + 35 extra from reserve fee + 1 for rounding
+    assert_eq!(ghost_balances, coins(100020401u128, "quote"));
 
     let status: StatusResponse = app
         .wrap()
         .query_wasm_smart(contracts.controller, &QueryMsg::Status {})
         .unwrap();
 
+    let reserve_status: unstake::reserve::StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.reserve, &unstake::reserve::QueryMsg::Status {})
+        .unwrap();
+
     // Remainder of the profit goes onto the reserve
-    assert_eq!(status.reserve_available, Uint128::from(20000u128 + 12));
-    assert_eq!(status.reserve_deployed, Uint128::zero());
-    assert_eq!(status.total_base, Uint128::from(10000u128));
+    assert_eq!(
+        reserve_status.available,
+        AmountU128::new(Uint128::from(20000u128 + 35))
+    );
+    assert_eq!(reserve_status.deployed, AmountU128::zero());
+    assert_eq!(status.total_base, AmountU128::new(Uint128::from(10000u128)));
     // 10000 * 1.07375 for returned amount
-    assert_eq!(status.total_quote, Uint128::from(10737u128));
+    assert_eq!(
+        status.total_quote,
+        AmountU128::new(Uint128::from(10737u128))
+    );
 }
 
 #[test]
@@ -634,15 +707,14 @@ fn close_early_offer() {
         (api.addr_make("unstaker"), coins(10000u128, "base")),
         (api.addr_make("lender"), coins(100000000u128, "quote")),
     ];
-    let (mut app, contracts) = setup(balances);
-
-    app.execute_contract(
+    let (mut app, contracts) = setup(balances, None);
+    fund_reserve(
+        &mut app,
         api.addr_make("funder"),
-        contracts.controller.clone(),
-        &ExecuteMsg::Fund {},
-        &coins(20000u128, "quote"),
-    )
-    .unwrap();
+        contracts.reserve.clone(),
+        20000u128.into(),
+        "quote",
+    );
 
     // Make sure that the provider has enough tokens to return once unbonding is complete
     app.send_tokens(
@@ -662,7 +734,7 @@ fn close_early_offer() {
     )
     .unwrap();
 
-    let amount = Uint128::from(10000u128);
+    let amount = AmountU128::new(Uint128::from(10000u128));
 
     app.execute_contract(
         api.addr_make("unstaker"),
@@ -691,7 +763,7 @@ fn close_early_offer() {
         api.addr_make("random"),
         delegate.clone(),
         &unstake::delegate::ExecuteMsg::Complete {},
-        &vec![],
+        &[],
     )
     .unwrap_err();
 }
@@ -706,15 +778,14 @@ fn close_losing_offer() {
         (api.addr_make("unstaker"), coins(10000u128, "base")),
         (api.addr_make("lender"), coins(100000000u128, "quote")),
     ];
-    let (mut app, contracts) = setup(balances);
-
-    app.execute_contract(
+    let (mut app, contracts) = setup(balances, None);
+    fund_reserve(
+        &mut app,
         api.addr_make("funder"),
-        contracts.controller.clone(),
-        &ExecuteMsg::Fund {},
-        &coins(20000u128, "quote"),
-    )
-    .unwrap();
+        contracts.reserve.clone(),
+        20000u128.into(),
+        "quote",
+    );
 
     // Make sure that the provider has enough tokens to return once unbonding is complete
     app.send_tokens(
@@ -734,7 +805,7 @@ fn close_losing_offer() {
     )
     .unwrap();
 
-    let amount = Uint128::from(10000u128);
+    let amount = AmountU128::new(Uint128::from(10000u128));
 
     app.execute_contract(
         api.addr_make("unstaker"),
@@ -758,25 +829,30 @@ fn close_losing_offer() {
     app.update_block(|x| {
         x.time = x.time.plus_days(21);
     });
+    let ghost_balances = query_balances(&app, contracts.ghost.clone());
+    println!("{:?}", ghost_balances);
 
     app.execute_contract(
         api.addr_make("random"),
         delegate.clone(),
         &unstake::delegate::ExecuteMsg::Complete {},
-        &vec![],
+        &[],
     )
     .unwrap();
 
-    let controller_balances = query_balances(&app, contracts.controller);
+    let reserve_balances = query_balances(&app, contracts.reserve);
     let delegate_balances = query_balances(&app, delegate);
     let provider_balances = query_balances(&app, contracts.provider);
     let ghost_balances = query_balances(&app, contracts.ghost.clone());
 
     // 21 days will be a total of 5.7534% interest
-    // So we'll pay 5.7534 on 10326 = 594,
+    // So we'll pay 5.7534 on (10326 - 823) = 547,
     // but have an allocated fee of 3.8356 on the total value = 10737 * 3.8356 = 411
-    // so we have a loss  here of 411 - 594 = -184 (rounding)
-    assert_eq!(controller_balances, coins(19817u128, "quote"));
+    // so we have a loss  here of 411 - 547 = -136 (rounding)
+    assert_eq!(
+        reserve_balances,
+        coins(19864u128, format!("factory/{}/urcpt", contracts.ghost))
+    );
 
     // delegate should now be empty
     assert_eq!(delegate_balances, vec![]);
@@ -789,8 +865,9 @@ fn close_losing_offer() {
     );
 
     // And ghost should have the borrowed amount returned with interest
-    // 10326 over 3 weeks at 100% = 3 / 52 = 595.
-    assert_eq!(ghost_balances, coins(100000595u128, "quote"));
+    // 100000000 + 20000 + 547 - 136 = 100020411 + 1 for rounding
+    // 9503 over 3 weeks at 100% = 3 / 52 = 549.
+    assert_eq!(ghost_balances, coins(100020412u128, "quote"));
 }
 
 #[test]
@@ -802,41 +879,38 @@ fn reserves() {
         (api.addr_make("unstaker"), coins(10000u128, "base")),
         (api.addr_make("lender"), coins(100000000u128, "quote")),
     ];
-    let (mut app, contracts) = setup(balances);
-
-    // Initial deposit
-    app.execute_contract(
+    let (mut app, contracts) = setup(balances, None);
+    fund_reserve(
+        &mut app,
         api.addr_make("funder"),
-        contracts.controller.clone(),
-        &ExecuteMsg::Fund {},
-        &coins(20000u128, "quote"),
-    )
-    .unwrap();
+        contracts.reserve.clone(),
+        20000u128.into(),
+        "quote",
+    );
 
     let rct_balance = app
         .wrap()
         .query_balance(
             api.addr_make("funder"),
-            format!("factory/{}/ursv", contracts.controller),
+            format!("factory/{}/ursv", contracts.reserve),
         )
         .unwrap();
     assert_eq!(rct_balance.amount, Uint128::from(20000u128));
 
     // Second deposit, scaled with no extra revenue
-
-    app.execute_contract(
+    fund_reserve(
+        &mut app,
         api.addr_make("funder"),
-        contracts.controller.clone(),
-        &ExecuteMsg::Fund {},
-        &coins(20000u128, "quote"),
-    )
-    .unwrap();
+        contracts.reserve.clone(),
+        20000u128.into(),
+        "quote",
+    );
 
     let rct_balance = app
         .wrap()
         .query_balance(
             api.addr_make("funder"),
-            format!("factory/{}/ursv", contracts.controller),
+            format!("factory/{}/ursv", contracts.reserve),
         )
         .unwrap();
     assert_eq!(rct_balance.amount, Uint128::from(40000u128));
@@ -853,7 +927,7 @@ fn reserves() {
     )
     .unwrap();
 
-    let amount = Uint128::from(10000u128);
+    let amount = AmountU128::new(Uint128::from(10000u128));
 
     app.execute_contract(
         api.addr_make("unstaker"),
@@ -869,9 +943,9 @@ fn reserves() {
     // Check we can't withdraw everything whilst reserves are being used
     app.execute_contract(
         api.addr_make("funder"),
-        contracts.controller.clone(),
-        &ExecuteMsg::Withdraw {},
-        &coins(40000u128, format!("factory/{}/ursv", contracts.controller)),
+        contracts.reserve.clone(),
+        &unstake::reserve::ExecuteMsg::Withdraw { callback: None },
+        &coins(40000u128, format!("factory/{}/ursv", contracts.reserve)),
     )
     .unwrap_err();
 
@@ -879,15 +953,15 @@ fn reserves() {
     let res = app
         .execute_contract(
             api.addr_make("funder"),
-            contracts.controller.clone(),
-            &ExecuteMsg::Withdraw {},
-            &coins(20000u128, format!("factory/{}/ursv", contracts.controller)),
+            contracts.reserve.clone(),
+            &unstake::reserve::ExecuteMsg::Withdraw { callback: None },
+            &coins(20000u128, format!("factory/{}/ursv", contracts.reserve)),
         )
         .unwrap();
 
     res.assert_event(&Event::new("transfer").add_attributes(vec![
         ("recipient", api.addr_make("funder").to_string()),
-        ("sender", contracts.controller.to_string()),
+        ("sender", contracts.reserve.to_string()),
         ("amount", "20000quote".to_string()),
     ]));
 
@@ -914,43 +988,46 @@ fn reserves() {
         api.addr_make("random"),
         delegate.clone(),
         &unstake::delegate::ExecuteMsg::Complete {},
-        &vec![],
+        &[],
     )
     .unwrap();
+
+    // Reserve rate is 1.0 + 35 / 20000 = 1.00175
 
     // Third deposit, should have slight less receipt token printed as the reserves > supply
-
-    app.execute_contract(
+    fund_reserve(
+        &mut app,
         api.addr_make("funder"),
-        contracts.controller.clone(),
-        &ExecuteMsg::Fund {},
-        &coins(20000u128, "quote"),
-    )
-    .unwrap();
+        contracts.reserve.clone(),
+        20000u128.into(),
+        "quote",
+    );
+
+    // 20000 / 1.00175 = 19965
 
     let rct_balance = app
         .wrap()
         .query_balance(
             api.addr_make("funder"),
-            format!("factory/{}/ursv", contracts.controller),
+            format!("factory/{}/ursv", contracts.reserve),
         )
         .unwrap();
-    assert_eq!(rct_balance.amount, Uint128::from(39988u128));
+    assert_eq!(rct_balance.amount, Uint128::from(20000u128 + 19965u128));
 
     // And now we withdraw some of what's left, ratio should be fractionally greater than 1
-
     let res = app
         .execute_contract(
             api.addr_make("funder"),
-            contracts.controller.clone(),
-            &ExecuteMsg::Withdraw {},
-            &coins(19994u128, format!("factory/{}/ursv", contracts.controller)),
+            contracts.reserve.clone(),
+            &unstake::reserve::ExecuteMsg::Withdraw { callback: None },
+            &coins(20000u128, format!("factory/{}/ursv", contracts.reserve)),
         )
         .unwrap();
 
+    // 20000u128 * 1.00175 = 20035
     res.assert_event(&Event::new("transfer").add_attributes(vec![
         ("recipient", api.addr_make("funder").to_string()),
-        ("sender", contracts.controller.to_string()),
-        ("amount", "20006quote".to_string()),
+        ("sender", contracts.reserve.to_string()),
+        ("amount", "20035quote".to_string()),
     ]));
 }

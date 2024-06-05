@@ -1,12 +1,17 @@
 use cosmwasm_std::{Addr, CustomQuery, Decimal, QuerierWrapper, StdResult};
+use monetary::Rate;
 
-use crate::adapter::{Adapter, Unstake};
+use crate::{
+    adapter::{Adapter, Unstake},
+    denoms::{Ask, Base, Debt, Rcpt},
+};
 
 pub struct Rates {
-    pub vault_debt: Decimal,
+    pub vault_debt: Rate<Base, Debt>,
+    pub vault_deposit: Rate<Base, Rcpt>,
     pub vault_interest: Decimal,
     pub vault_max_interest: Decimal,
-    pub provider_redemption: Decimal,
+    pub provider_redemption: Rate<Base, Ask>,
 }
 
 impl Rates {
@@ -29,10 +34,11 @@ impl Rates {
         // )?;
 
         Ok(Self {
-            vault_debt: status.debt_share_ratio,
+            vault_debt: Rate::new(status.debt_share_ratio).unwrap(),
+            vault_deposit: Rate::new(status.deposit_redemption_ratio).unwrap(),
             vault_interest: status.rate,
             vault_max_interest: Decimal::from_ratio(3u128, 1u128),
-            provider_redemption,
+            provider_redemption: Rate::new(provider_redemption).unwrap(),
         })
     }
 }
