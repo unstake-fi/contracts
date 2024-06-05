@@ -294,7 +294,7 @@ pub fn execute(
 
             let event = Event::new("unstake/reserve/add_controller").add_attributes(vec![
                 ("controller", controller.to_string()),
-                ("limit", limit.map_or("".to_string(), |l| l.to_string())),
+                ("limit", limit.map_or("null".to_string(), |l| l.to_string())),
             ]);
             Ok(Response::default().add_event(event))
         }
