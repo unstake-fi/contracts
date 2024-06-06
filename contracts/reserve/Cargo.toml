@@ -1,6 +1,6 @@
 [package]
 name = "unstake-reserve"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Amit Prasad <amit@entropiclabs.io", "Entropic Labs"]
 edition = "2021"
 

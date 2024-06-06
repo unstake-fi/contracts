@@ -353,9 +353,10 @@ pub fn execute(
                 ("reserves_deployed", &reserves_deployed.to_string()),
                 ("legacy_denom", &legacy_denom.to_string()),
                 (
-                    "legacy_redemption_rate",
+                    "original_legacy_redemption_rate",
                     &legacy_redemption_rate.to_string(),
                 ),
+                ("new_legacy_redemption_rate", &legacy_to_rsv.to_string()),
                 ("total_available", &state.available.to_string()),
                 ("total_deployed", &state.deployed.to_string()),
                 ("controller", &info.sender.to_string()),

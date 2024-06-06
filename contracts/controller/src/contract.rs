@@ -308,12 +308,12 @@ pub fn migrate(
         pub const CONFIG: Item<Config> = Item::new("config");
         pub const RESERVES: Item<(Uint128, Uint128)> = Item::new("reserves");
     }
+    let old_cfg = v_0_3_0::CONFIG.load(deps.storage)?;
     let mut msgs: Vec<CosmosMsg<_>> = vec![];
     let ghost_cfg: kujira_ghost::receipt_vault::ConfigResponse = deps.querier.query_wasm_smart(
-        &env.contract.address,
+        &old_cfg.vault_address,
         &kujira_ghost::receipt_vault::QueryMsg::Config {},
     )?;
-    let old_cfg = v_0_3_0::CONFIG.load(deps.storage)?;
     let cfg = Config {
         owner: old_cfg.owner,
         protocol_fee: old_cfg.protocol_fee,
@@ -342,8 +342,8 @@ pub fn migrate(
 
     // Call the Reserve's legacy migration utility, transferring all reserves to the Reserve
     let rsv_supply = deps.querier.query_supply(rsv_denom.to_string())?;
-    let total_reserve = reserves_available + reserves_available;
-    let reserve_redemption_rate = Decimal::from_ratio(rsv_supply.amount, total_reserve);
+    let total_reserve = reserves_available + reserves_deployed;
+    let reserve_redemption_rate = Decimal::from_ratio(total_reserve, rsv_supply.amount);
 
     let to_send_base = deps
         .querier
