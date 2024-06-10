@@ -32,3 +32,9 @@ The Instant Unstaking protocol for the interchain, only on @TeamKujira. Don’t 
 
 - controller: code id `252`
 - delegate: code id `253`
+
+#### 1.0.0-1.0.1
+
+- controller: code id `326`
+- reserve: code id `327`
+- delegate: code id `328`
