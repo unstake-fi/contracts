@@ -5,6 +5,7 @@ use kujira_ghost::receipt_vault::ConfigResponse as GhostConfig;
 use monetary::Denom;
 use unstake::{
     adapter::Adapter,
+    broker::Broker,
     controller::{ConfigResponse, InstantiateMsg},
     denoms::{Ask, Base, Debt, Rcpt},
 };
@@ -72,22 +73,21 @@ impl Config {
             self.delegate_code_id = delegate_code_id
         }
     }
-}
 
-impl From<Config> for ConfigResponse {
-    fn from(value: Config) -> Self {
-        Self {
-            owner: value.owner,
-            protocol_fee: value.protocol_fee,
-            protocol_fee_address: value.protocol_fee_address,
-            delegate_code_id: value.delegate_code_id,
-            reserve_address: value.reserve_address,
-            vault_address: value.vault_address,
-            offer_denom: value.offer_denom,
-            ask_denom: value.ask_denom,
-            debt_denom: value.debt_denom,
-            ghost_denom: value.ghost_denom,
-            adapter: value.adapter,
+    pub fn to_response(self, broker: Broker) -> ConfigResponse {
+        ConfigResponse {
+            owner: self.owner,
+            protocol_fee: self.protocol_fee,
+            protocol_fee_address: self.protocol_fee_address,
+            delegate_code_id: self.delegate_code_id,
+            reserve_address: self.reserve_address,
+            vault_address: self.vault_address,
+            offer_denom: self.offer_denom,
+            ask_denom: self.ask_denom,
+            debt_denom: self.debt_denom,
+            ghost_denom: self.ghost_denom,
+            adapter: self.adapter,
+            broker,
         }
     }
 }

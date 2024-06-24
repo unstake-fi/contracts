@@ -1,6 +1,6 @@
 use crate::{
     adapter::Adapter,
-    broker::{Offer, Status},
+    broker::{Broker, Offer, Status},
     denoms::{Ask, Base, Debt, Rcpt},
     rates::Rates,
 };
@@ -124,6 +124,7 @@ pub struct ConfigResponse {
     pub debt_denom: Denom<Debt>,
     pub ghost_denom: Denom<Rcpt>,
     pub adapter: Adapter,
+    pub broker: Broker,
 }
 
 #[cw_serde]

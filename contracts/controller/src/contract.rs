@@ -16,8 +16,8 @@ use monetary::{must_pay, AmountU128, CheckedCoin, Denom, Rate};
 use serde::Serialize;
 use unstake::broker::Status;
 use unstake::controller::{
-    CallbackType, ConfigResponse, DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse,
-    QueryMsg, RatesResponse, StatusResponse,
+    CallbackType, DelegatesResponse, ExecuteMsg, InstantiateMsg, OfferResponse, QueryMsg,
+    RatesResponse, StatusResponse,
 };
 use unstake::denoms::Base;
 use unstake::helpers::predict_address;
@@ -129,9 +129,10 @@ pub fn execute(
                 config.vault_address,
                 ContractError::Unauthorized {}
             );
-            let debt_amount = amount(&config.debt_denom, &info.funds)?;
-            let unbond_amount = config.ask_denom.coin(offer.unbond_amount);
-            let mut funds = NativeBalance(vec![debt_amount.into(), unbond_amount.into()]);
+            let debt = amount(&config.debt_denom, &info.funds)?;
+            let debt_amount = debt.amount;
+            let unbond = config.ask_denom.coin(offer.unbond_amount);
+            let mut funds = NativeBalance(vec![debt.into(), unbond.into()]);
             funds.normalize();
 
             let label = delegate_label(&env);
@@ -158,6 +159,7 @@ pub fn execute(
 
             let event: Event = Event::new("unstake/controller/callback/unstake")
                 .add_attribute("unbond_amount", offer.unbond_amount)
+                .add_attribute("debt_amount", debt_amount)
                 .add_attribute("delegate", address);
 
             Ok(Response::default()
@@ -250,9 +252,9 @@ pub fn execute(
 pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     let config = Config::load(deps.storage)?;
     let rates = Rates::load(deps.querier, &config.adapter, &config.vault_address)?;
+    let broker = Broker::load(deps.storage)?;
     match msg {
         QueryMsg::Offer { amount } => {
-            let broker = Broker::load(deps.storage)?;
             let reserve_status = deps.querier.query_wasm_smart(
                 &config.reserve_address,
                 &unstake::reserve::QueryMsg::Status {},
@@ -268,7 +270,7 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
             Ok(to_json_binary(&response)?)
         }
         QueryMsg::Rates {} => Ok(to_json_binary(&RatesResponse::from(rates))?),
-        QueryMsg::Config {} => Ok(to_json_binary(&ConfigResponse::from(config))?),
+        QueryMsg::Config {} => Ok(to_json_binary(&config.to_response(broker))?),
         QueryMsg::Status {} => Ok(to_json_binary(&StatusResponse::from(Status::load(
             deps.storage,
         )))?),
