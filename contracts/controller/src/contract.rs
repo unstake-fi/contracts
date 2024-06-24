@@ -1,18 +1,17 @@
 use std::ops::Sub;
 
 use crate::config::Config;
-use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure_eq, to_json_binary, wasm_execute, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut,
-    Empty, Env, Event, MessageInfo, Order, Response, StdError, StdResult, Timestamp, WasmMsg,
+    ensure_eq, to_json_binary, wasm_execute, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Empty,
+    Env, Event, MessageInfo, Order, Response, StdError, StdResult, Timestamp, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
 use cw_utils::NativeBalance;
-use kujira::{DenomMsg, KujiraMsg, KujiraQuery};
-use monetary::{must_pay, AmountU128, CheckedCoin, Denom, Rate};
+use kujira::{KujiraMsg, KujiraQuery};
+use monetary::{must_pay, AmountU128, CheckedCoin, Denom};
 use serde::Serialize;
 use unstake::broker::Status;
 use unstake::controller::{
@@ -277,91 +276,11 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
     }
 }
 
-#[cw_serde]
-pub struct MigrateMsg {
-    pub reserve_address: Addr,
-}
-
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(
-    deps: DepsMut<KujiraQuery>,
-    env: Env,
-    msg: MigrateMsg,
-) -> StdResult<Response<KujiraMsg>> {
-    mod v_0_3_0 {
-        use cosmwasm_schema::cw_serde;
-        use cosmwasm_std::{Addr, Decimal, Uint128};
-        use cw_storage_plus::Item;
-        use kujira::Denom;
-        use unstake::adapter::Adapter;
+pub fn migrate(deps: DepsMut<KujiraQuery>, _env: Env, _msg: ()) -> StdResult<Response<KujiraMsg>> {
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-        #[cw_serde]
-        pub struct Config {
-            pub owner: Addr,
-            pub protocol_fee: Decimal,
-            pub protocol_fee_address: Addr,
-            pub delegate_code_id: u64,
-            pub vault_address: Addr,
-            pub offer_denom: Denom,
-            pub ask_denom: Denom,
-            pub adapter: Adapter,
-        }
-
-        pub const CONFIG: Item<Config> = Item::new("config");
-        pub const RESERVES: Item<(Uint128, Uint128)> = Item::new("reserves");
-    }
-    let old_cfg = v_0_3_0::CONFIG.load(deps.storage)?;
-    let mut msgs: Vec<CosmosMsg<_>> = vec![];
-    let ghost_cfg: kujira_ghost::receipt_vault::ConfigResponse = deps.querier.query_wasm_smart(
-        &old_cfg.vault_address,
-        &kujira_ghost::receipt_vault::QueryMsg::Config {},
-    )?;
-    let cfg = Config {
-        owner: old_cfg.owner,
-        protocol_fee: old_cfg.protocol_fee,
-        protocol_fee_address: old_cfg.protocol_fee_address,
-        delegate_code_id: old_cfg.delegate_code_id,
-        reserve_address: msg.reserve_address,
-        vault_address: old_cfg.vault_address.clone(),
-        offer_denom: Denom::new(old_cfg.offer_denom.to_string()),
-        debt_denom: Denom::new(ghost_cfg.debt_token_denom),
-        ghost_denom: Denom::new(ghost_cfg.receipt_denom),
-        ask_denom: Denom::new(old_cfg.ask_denom.to_string()),
-        adapter: old_cfg.adapter,
-    };
-    cfg.save(deps.storage)?;
-
-    let (reserves_available, reserves_deployed) = v_0_3_0::RESERVES.load(deps.storage)?;
-    v_0_3_0::RESERVES.remove(deps.storage);
-
-    // Transfer denom authority to the reserve
-    let rsv_denom: kujira::Denom = format!("factory/{}/ursv", env.contract.address).into();
-    let denom_admin_msg = DenomMsg::ChangeAdmin {
-        denom: rsv_denom.clone(),
-        address: cfg.reserve_address.clone(),
-    };
-    msgs.push(denom_admin_msg.into());
-
-    // Call the Reserve's legacy migration utility, transferring all reserves to the Reserve
-    let rsv_supply = deps.querier.query_supply(rsv_denom.to_string())?;
-    let total_reserve = reserves_available + reserves_deployed;
-    let reserve_redemption_rate = Decimal::from_ratio(total_reserve, rsv_supply.amount);
-
-    let to_send_base = deps
-        .querier
-        .query_balance(&env.contract.address, cfg.offer_denom.to_string())?;
-    let migrate_msg = wasm_execute(
-        &cfg.reserve_address,
-        &unstake::reserve::ExecuteMsg::MigrateLegacyReserve {
-            reserves_deployed: AmountU128::new(reserves_deployed),
-            legacy_denom: Denom::new(rsv_denom.to_string()),
-            legacy_redemption_rate: Rate::new(reserve_redemption_rate).unwrap(),
-        },
-        vec![to_send_base],
-    )?;
-    msgs.push(migrate_msg.into());
-
-    Ok(Response::default().add_messages(msgs))
+    Ok(Response::default())
 }
 
 pub fn vault_borrow_msg<T>(
