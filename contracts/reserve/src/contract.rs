@@ -122,7 +122,7 @@ pub fn execute(
             let rate = ghost_rate.inv() * reserve_redemption_ratio;
 
             let liquidity = state.available;
-            let required_liquidity = reserve_amount.mul_ceil(&rate);
+            let required_liquidity = reserve_amount.mul_floor(&rate);
             if liquidity.lt(&required_liquidity) {
                 return Err(ContractError::InsufficentFunds {});
             }
