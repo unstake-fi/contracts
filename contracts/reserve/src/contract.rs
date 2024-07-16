@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use crate::config::Config;
 use crate::state::{State, LEGACY_DENOMS};
 #[cfg(not(feature = "library"))]
@@ -19,7 +17,7 @@ use kujira_ghost::receipt_vault::{
     StatusResponse as GhostStatusResponse, WithdrawMsg,
 };
 use monetary::{must_pay, AmountU128, Exchange, Rate};
-use unstake::denoms::{Base, LegacyRsv, Rcpt};
+use unstake::denoms::{Base, LegacyRsv, Rcpt, Rsv};
 use unstake::reserve::{
     ConfigResponse, ExecuteMsg, InstantiateMsg, QueryMsg, StatusResponse, WhitelistItem,
     WhitelistResponse,
@@ -64,6 +62,10 @@ pub fn execute(
 ) -> Result<Response<KujiraMsg>, ContractError> {
     let config = Config::load(deps.storage)?;
     let mut state = State::load(deps.storage)?;
+
+    // Calculate/fetch rates.
+    let (ghost_rate, reserve_redemption_ratio) = calculate_rates(&deps.querier, &config, &state)?;
+
     match msg {
         ExecuteMsg::Fund { callback } => {
             // Deposit to GHOST vault
@@ -74,14 +76,13 @@ pub fn execute(
                 coins(base_amount.u128(), &config.base_denom),
             )?;
 
-            let ghost_rate = ghost_rate(&deps.querier, &config)?;
             let received = base_amount.div_floor(&ghost_rate);
 
             state.available += received;
             state.save(deps.storage)?;
 
             // Mint appropriate amount of reserve tokens
-            let reserve_mint_amount = base_amount.div_floor(&state.reserve_redemption_ratio);
+            let reserve_mint_amount = base_amount.div_floor(&reserve_redemption_ratio);
             let reserve_mint_msg = DenomMsg::Mint {
                 denom: config.rsv_denom.to_string().into(),
                 amount: reserve_mint_amount.uint128(),
@@ -118,8 +119,7 @@ pub fn execute(
             let reserve_amount = must_pay(&info, &config.rsv_denom)?;
 
             // Ensure we have enough liquidity to withdraw
-            let ghost_rate = ghost_rate(&deps.querier, &config)?;
-            let rate = ghost_rate.inv() * state.reserve_redemption_ratio;
+            let rate = ghost_rate.inv() * reserve_redemption_ratio;
 
             let liquidity = state.available;
             let required_liquidity = reserve_amount.mul_ceil(&rate);
@@ -185,7 +185,6 @@ pub fn execute(
             WHITELISTED_CONTROLLERS.save(deps.storage, &info.sender, &(lent, limit))?;
 
             // Ensure we have enough liquidity to allocate the requested amount
-            let ghost_rate = ghost_rate(&deps.querier, &config)?;
             let required_liquidity = requested_amount.div_ceil(&ghost_rate);
             if required_liquidity.gt(&state.available) {
                 return Err(ContractError::InsufficentReserves {});
@@ -241,19 +240,6 @@ pub fn execute(
             let (mut lent, limit) = maybe_limit.unwrap();
             lent = lent.checked_sub(original_amount)?;
             WHITELISTED_CONTROLLERS.save(deps.storage, &info.sender, &(lent, limit))?;
-
-            // Update the rates
-            let ghost_rate = ghost_rate(&deps.querier, &config)?;
-            let total_base = state.deployed + state.available.mul_floor(&ghost_rate);
-            let delta = Decimal::from_ratio(
-                original_amount.abs_diff(received).uint128(),
-                total_base.uint128(),
-            );
-            state.reserve_redemption_ratio = match received.cmp(&original_amount) {
-                Ordering::Less => state.reserve_redemption_ratio.sub_decimal(delta)?,
-                Ordering::Equal => state.reserve_redemption_ratio,
-                Ordering::Greater => state.reserve_redemption_ratio.add_decimal(delta)?,
-            };
 
             // Deposit the returned amount to the GHOST vault
             let ghost_deposit_msg = wasm_execute(
@@ -329,7 +315,6 @@ pub fn execute(
 
             // Deposit to GHOST
             let base_amount = must_pay(&info, &config.base_denom)?;
-            let ghost_rate = ghost_rate(&deps.querier, &config)?;
             let received = base_amount.div_floor(&ghost_rate);
             let ghost_msg = wasm_execute(
                 &config.ghost_vault_addr,
@@ -344,7 +329,7 @@ pub fn execute(
             state.save(deps.storage)?;
 
             // Snapshots the current rate of Legacy Reserve to Reserve, and saves it.
-            let legacy_to_rsv = state.reserve_redemption_ratio.inv() * legacy_redemption_rate;
+            let legacy_to_rsv = reserve_redemption_ratio.inv() * legacy_redemption_rate;
             LEGACY_DENOMS.save(deps.storage, legacy_denom.to_string(), &legacy_to_rsv)?;
 
             let event = Event::new("unstake/reserve/migrate").add_attributes(vec![
@@ -406,14 +391,16 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
     match msg {
         QueryMsg::Status {} => {
             let state = State::load(deps.storage)?;
-            let ghost_rate = ghost_rate(&deps.querier, &config)?;
+
+            let (ghost_rate, reserve_redemption_ratio) =
+                calculate_rates(&deps.querier, &config, &state)?;
             let total_base = state.deployed + state.available.mul_floor(&ghost_rate);
 
             Ok(to_json_binary(&StatusResponse {
                 total: total_base,
                 deployed: state.deployed,
                 available: state.available,
-                reserve_redemption_rate: state.reserve_redemption_ratio,
+                reserve_redemption_rate: reserve_redemption_ratio,
             })?)
         }
         QueryMsg::Whitelist {} => {
@@ -437,7 +424,30 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(_deps: DepsMut<KujiraQuery>, _env: Env, _msg: ()) -> StdResult<Response<KujiraMsg>> {
+pub fn migrate(deps: DepsMut<KujiraQuery>, _env: Env, _msg: ()) -> StdResult<Response<KujiraMsg>> {
+    mod v1_0_1 {
+        use cosmwasm_schema::cw_serde;
+        use cw_storage_plus::Item;
+        use monetary::{AmountU128, Rate};
+        use unstake::denoms::{Base, Rcpt, Rsv};
+
+        #[cw_serde]
+        pub struct State {
+            pub deployed: AmountU128<Base>,
+            pub available: AmountU128<Rcpt>,
+            pub reserve_redemption_ratio: Rate<Base, Rsv>,
+        }
+
+        pub const STATE: Item<State> = Item::new("state");
+    }
+    let state = v1_0_1::STATE.load(deps.storage)?;
+
+    let state = State {
+        deployed: state.deployed,
+        available: state.available,
+    };
+    state.save(deps.storage)?;
+
     Ok(Response::default())
 }
 
@@ -448,4 +458,20 @@ pub fn ghost_rate<C: CustomQuery>(
     let ghost_rates: GhostStatusResponse =
         querier.query_wasm_smart(&config.ghost_vault_addr, &GhostQueryMsg::Status {})?;
     Ok(Rate::new(ghost_rates.deposit_redemption_ratio).unwrap())
+}
+
+pub fn calculate_rates<C: CustomQuery>(
+    querier: &QuerierWrapper<C>,
+    config: &Config,
+    state: &State,
+) -> StdResult<(Rate<Base, Rcpt>, Rate<Base, Rsv>)> {
+    let ghost_rate = ghost_rate(querier, config)?;
+    let total_value = state.deployed + state.available.mul_floor(&ghost_rate);
+    let rsv_supply = querier.query_supply(&config.rsv_denom)?.amount;
+    let reserve_redemption_ratio: Rate<Base, Rsv> = Rate::new(
+        Decimal::checked_from_ratio(total_value.uint128(), rsv_supply).unwrap_or(Decimal::one()),
+    )
+    .unwrap();
+
+    Ok((ghost_rate, reserve_redemption_ratio))
 }
