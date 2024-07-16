@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Decimal, StdResult, Storage};
+use cosmwasm_std::{StdResult, Storage};
 use cw_storage_plus::{Item, Map};
 use monetary::{AmountU128, Rate};
 use unstake::denoms::{Base, LegacyRsv, Rcpt, Rsv};
@@ -8,7 +8,6 @@ use unstake::denoms::{Base, LegacyRsv, Rcpt, Rsv};
 pub struct State {
     pub deployed: AmountU128<Base>,
     pub available: AmountU128<Rcpt>,
-    pub reserve_redemption_ratio: Rate<Base, Rsv>,
 }
 
 impl State {
@@ -16,7 +15,6 @@ impl State {
         State {
             deployed: AmountU128::zero(),
             available: AmountU128::zero(),
-            reserve_redemption_ratio: Rate::new(Decimal::one()).unwrap(),
         }
     }
 
