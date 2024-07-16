@@ -1,7 +1,4 @@
-use std::{
-    ops::{Add, Mul},
-    str::FromStr,
-};
+use std::ops::{Add, Mul};
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -27,7 +24,7 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> StdResult<Response<KujiraMsg>> {
     INIT.save(deps.storage, &msg)?;
-    TS.save(deps.storage, &(env.block.time, Decimal::from_str("1.12")?))?;
+    TS.save(deps.storage, &(env.block.time, Decimal::one()))?;
     let denom_msgs = vec![
         DenomMsg::Create {
             subdenom: "udebt".into(),
@@ -52,20 +49,26 @@ pub fn execute(
     let denom = init.denom;
     match msg {
         ExecuteMsg::Deposit(msg) => {
+            let (_rate, debt_share_ratio) = rates(deps.as_ref(), env.block.time)?;
             let rec = must_pay(&info, denom.as_ref()).unwrap();
-            // just dummy mint
+            // just dummy mint using same rate as debt rate
+            let rcpt_amount = rec.div_floor(debt_share_ratio);
             let rcpt_mint_msg = CosmosMsg::Custom(KujiraMsg::Denom(DenomMsg::Mint {
                 denom: rcpt_token_denom.clone(),
-                amount: rec,
+                amount: rcpt_amount,
                 recipient: env.contract.address,
             }));
 
-            let msg = msg
-                .callback
-                .map_or(rcpt_token_denom.send(&info.sender, &rec), |cb| {
-                    cb.to_message(&info.sender, Empty {}, vec![rcpt_token_denom.coin(&rec)])
+            let msg =
+                msg.callback
+                    .map_or(rcpt_token_denom.send(&info.sender, &rcpt_amount), |cb| {
+                        cb.to_message(
+                            &info.sender,
+                            Empty {},
+                            vec![rcpt_token_denom.coin(&rcpt_amount)],
+                        )
                         .unwrap()
-                });
+                    });
 
             Ok(Response::default().add_messages(vec![rcpt_mint_msg, msg]))
         }
@@ -76,10 +79,14 @@ pub fn execute(
                 amount: rec,
             }));
 
-            let msg = msg.callback.map_or(denom.send(&info.sender, &rec), |cb| {
-                cb.to_message(&info.sender, Empty {}, vec![denom.coin(&rec)])
-                    .unwrap()
-            });
+            let (_rate, debt_share_ratio) = rates(deps.as_ref(), env.block.time)?;
+            let return_amount = rec.mul_floor(debt_share_ratio);
+            let msg = msg
+                .callback
+                .map_or(denom.send(&info.sender, &return_amount), |cb| {
+                    cb.to_message(&info.sender, Empty {}, vec![denom.coin(&return_amount)])
+                        .unwrap()
+                });
 
             Ok(Response::default().add_messages(vec![rcpt_burn_msg, msg]))
         }
@@ -178,7 +185,7 @@ pub fn query(deps: Deps<KujiraQuery>, env: Env, msg: QueryMsg) -> StdResult<Bina
             deposited: Uint128::zero(),
             borrowed: Uint128::zero(),
             rate,
-            deposit_redemption_ratio: Decimal::one(),
+            deposit_redemption_ratio: debt_share_ratio,
             debt_share_ratio,
         }),
         QueryMsg::MarketParams { .. } => todo!(),

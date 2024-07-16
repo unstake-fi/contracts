@@ -710,3 +710,59 @@ fn test_request_reserves_unauthorized() {
 
     assert!(result.is_err());
 }
+
+#[test]
+fn test_rates() {
+    let api = MockApiBech32::new("kujira");
+    let balances = vec![
+        (api.addr_make("funder"), coins(1000000u128, "base")),
+        (api.addr_make("lender"), coins(100000000u128, "base")),
+    ];
+    let (mut app, contracts) = setup(balances);
+    let funder = app.api().addr_make("funder");
+
+    // Fund ghost first
+    app.execute_contract(
+        api.addr_make("lender"),
+        contracts.ghost.clone(),
+        &kujira_ghost::receipt_vault::ExecuteMsg::Deposit(
+            kujira_ghost::receipt_vault::DepositMsg { callback: None },
+        ),
+        &coins(100000000u128, "base"),
+    )
+    .unwrap();
+
+    app.execute_contract(
+        funder.clone(),
+        contracts.reserve.clone(),
+        &ExecuteMsg::Fund { callback: None },
+        &coins(10000u128, "base"),
+    )
+    .unwrap();
+
+    // Wait for some time to pass
+    // 2 weeks later, ghost rate should have increased
+    app.update_block(|x| {
+        x.time = x.time.plus_days(14);
+    });
+
+    let ursv = format!("factory/{}/ursv", contracts.reserve);
+    app.execute_contract(
+        funder.clone(),
+        contracts.reserve.clone(),
+        &ExecuteMsg::Withdraw { callback: None },
+        &coins(10000u128, ursv),
+    )
+    .unwrap();
+
+    let funder_balance = app.wrap().query_balance(funder.clone(), "base").unwrap();
+    assert_eq!(funder_balance.amount.u128(), 1000000u128 + 382u128);
+
+    let status: StatusResponse = app
+        .wrap()
+        .query_wasm_smart(contracts.reserve.clone(), &QueryMsg::Status {})
+        .unwrap();
+
+    assert_eq!(status.available.u128(), 1u128); // Defensive rounding
+    assert_eq!(status.deployed.u128(), 0u128);
+}
