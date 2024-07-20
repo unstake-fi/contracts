@@ -3,9 +3,9 @@ use crate::state::{State, LEGACY_DENOMS};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coins, ensure, ensure_eq, to_json_binary, wasm_execute, Addr, Binary, CosmosMsg, CustomQuery,
-    Decimal, Deps, DepsMut, Empty, Env, Event, MessageInfo, Order, QuerierWrapper, Response,
-    StdResult,
+    coins, ensure, ensure_eq, to_json_binary, wasm_execute, Addr, BankMsg, Binary, CosmosMsg,
+    CustomQuery, Decimal, Deps, DepsMut, Empty, Env, Event, MessageInfo, Order, QuerierWrapper,
+    Response, StdResult,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Map;
@@ -359,10 +359,9 @@ pub fn execute(
             let amount = AmountU128::<LegacyRsv>::new(received.amount);
             let return_amount = amount.mul_floor(&rate);
 
-            let mint_msg = DenomMsg::Mint {
-                denom: config.rsv_denom.to_string().into(),
-                amount: return_amount.uint128(),
-                recipient: info.sender.clone(),
+            let send_msg = BankMsg::Send {
+                to_address: info.sender.to_string(),
+                amount: vec![config.rsv_denom.coin(return_amount).into()],
             };
 
             let burn_msg = DenomMsg::Burn {
@@ -378,7 +377,7 @@ pub fn execute(
             ]);
 
             Ok(Response::default()
-                .add_message(mint_msg)
+                .add_message(send_msg)
                 .add_message(burn_msg)
                 .add_event(event))
         }
@@ -424,31 +423,31 @@ pub fn query(deps: Deps<KujiraQuery>, _env: Env, msg: QueryMsg) -> Result<Binary
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(deps: DepsMut<KujiraQuery>, _env: Env, _msg: ()) -> StdResult<Response<KujiraMsg>> {
-    mod v1_0_1 {
-        use cosmwasm_schema::cw_serde;
-        use cw_storage_plus::Item;
-        use monetary::{AmountU128, Rate};
-        use unstake::denoms::{Base, Rcpt, Rsv};
+pub fn migrate(deps: DepsMut<KujiraQuery>, env: Env, _msg: ()) -> StdResult<Response<KujiraMsg>> {
+    let config = Config::load(deps.storage)?;
 
-        #[cw_serde]
-        pub struct State {
-            pub deployed: AmountU128<Base>,
-            pub available: AmountU128<Rcpt>,
-            pub reserve_redemption_ratio: Rate<Base, Rsv>,
+    let all_legacy = LEGACY_DENOMS
+        .range(deps.storage, None, None, Order::Ascending)
+        .collect::<StdResult<Vec<_>>>()?;
+    let mut msgs = vec![];
+    for (denom, rate) in all_legacy {
+        let supply = deps.querier.query_supply(&denom)?.amount;
+        let amount = AmountU128::<LegacyRsv>::new(supply);
+        let return_amount = amount.mul_floor(&rate);
+
+        if return_amount.is_zero() {
+            continue;
         }
-
-        pub const STATE: Item<State> = Item::new("state");
+        let mint_msg = DenomMsg::Mint {
+            denom: config.rsv_denom.to_string().into(),
+            amount: return_amount.uint128(),
+            recipient: env.contract.address.clone(),
+        };
+        msgs.push(mint_msg);
     }
-    let state = v1_0_1::STATE.load(deps.storage)?;
 
-    let state = State {
-        deployed: state.deployed,
-        available: state.available,
-    };
-    state.save(deps.storage)?;
-
-    Ok(Response::default())
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    Ok(Response::default().add_messages(msgs))
 }
 
 pub fn ghost_rate<C: CustomQuery>(

@@ -31,7 +31,7 @@ serde = { version = "1.0.202", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.61" }
 cw-multi-test = "2.0.1"
 unstake = { path = "./packages/unstake" }
-monetary = { version = "0.0.3" }
+monetary = { version = "0.0.4" }
 
 [patch."https://github.com/Team-Kujira/kujira-rs.git"]
 # Use canonical kujira crate
